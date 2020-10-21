@@ -67,7 +67,7 @@ const Index = () => {
   }, [entries])
 
   useEffect(() => {
-    const interval = setInterval(() => handleEntiresChange(entries), 1000 * 60)
+    const interval = setInterval(() => handleEntiresChange(entries), 1000 * 15)
     return () => clearInterval(interval)
   }, [entries])
 
