@@ -72,9 +72,9 @@ const Home = () => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <main className={styles.main}>
-        <Header mode={mode} setMode={setMode} />
+      <Header mode={mode} setMode={setMode} />
 
+      <main className={styles.main}>
         {mode === MODES.CREATE ? (
           <CreateEntryForm
             onSubmit={(x) => {
