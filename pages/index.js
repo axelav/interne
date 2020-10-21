@@ -102,12 +102,20 @@ const Home = () => {
               ))}
           </div>
         )}
-        {mode === MODES.VIEW && (
-          <div className={styles.filter} onClick={handleViewFilterClick}>
-            {isFilterActive ? 'View All' : <span>Viewing All</span>}
-          </div>
-        )}
       </main>
+
+      {mode === MODES.VIEW && (
+        <div
+          className={styles.filter}
+          onClick={handleViewFilterClick}
+          style={{
+            left: isFilterActive ? '-14px' : '-28px',
+          }}
+        >
+          {isFilterActive ? 'View All' : <span>Viewing All</span>}
+        </div>
+      )}
+
       <Footer />
     </div>
   )
