@@ -1,0 +1,42 @@
+.header {
+  position: fixed;
+  top: 0.5rem;
+  left: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 0 0.5rem;
+
+  /* TODO use background? */
+  /* background: #fff; */
+  /* top: 0; */
+  /* padding: 0.5rem; */
+}
+
+.title,
+.current-date {
+  font-size: 1.25rem;
+  line-height: 1.5;
+  width: 150px;
+}
+
+.title {
+  margin: 0;
+  font-family: athelas, georgia, serif;
+  font-weight: 400;
+  font-style: italic;
+}
+
+.current-date {
+  font-family: athelas, georgia, serif;
+  text-align: right;
+}
+
+.mode {
+  font-weight: 700;
+  font-size: 1rem;
+  line-height: 1.5;
+  cursor: pointer;
+}
+

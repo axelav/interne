@@ -2,15 +2,9 @@ import React, { useState } from 'react'
 import PropTypes from 'prop-types'
 import { v4 as uuidv4 } from 'uuid'
 import { Form, Input, Select, Button } from './Forms'
-import { toTitleCase } from '../services/formatters'
+import { toTitleCase } from '../utils/formatters'
+import { INTERVALS } from '../utils/constants'
 import styles from '../styles/Forms.module.css'
-
-const INTERVALS = {
-  DAYS: 'days',
-  WEEKS: 'weeks',
-  MONTHS: 'months',
-  years: 'years',
-}
 
 const CreateEntryForm = ({ onSubmit }) => {
   const [url, setUrl] = useState('')

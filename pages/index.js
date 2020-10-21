@@ -1,17 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import Head from 'next/head'
-import sortBy from 'sort-by'
+// import sortBy from 'sort-by'
 import { DateTime } from 'luxon'
 import CreateEntryForm from '../components/CreateEntryForm'
+import Header from '../components/Header'
+import Footer from '../components/Footer'
 import { saveEntries, retrieveEntries } from '../services/storage'
-import { toTitleCase } from '../services/formatters'
-import styles from '../styles/Home.module.css'
-import { name, version } from '../package.json'
-
-const MODES = {
-  VIEW: 'view',
-  CREATE: 'create',
-}
+import { toTitleCase } from '../utils/formatters'
+import { MODES } from '../utils/constants'
+import { name } from '../package.json'
+import styles from '../styles/Index.module.css'
 
 // TODO refactor this, sorting, setting state, saving to storage, etc as a func
 const setVisibility = (entry) => {
@@ -75,31 +73,7 @@ const Home = () => {
       </Head>
 
       <main className={styles.main}>
-        <header className={styles.header}>
-          <h1 className={styles.title}>{toTitleCase(name)}</h1>
-
-          <div
-            className={styles.mode}
-            onClick={() => {
-              switch (mode) {
-                case MODES.CREATE:
-                  setMode(MODES.VIEW)
-                  break
-                case MODES.VIEW:
-                  setMode(MODES.CREATE)
-                  break
-                default:
-                  setMode(MODES.VIEW)
-              }
-            }}
-          >
-            {mode === MODES.CREATE ? 'View Entires' : 'Add Entry'}
-          </div>
-
-          <div className={styles['current-date']}>
-            {DateTime.local().toLocaleString(DateTime.DATE_MED)}
-          </div>
-        </header>
+        <Header mode={mode} setMode={setMode} />
 
         {mode === MODES.CREATE ? (
           <CreateEntryForm
@@ -134,17 +108,7 @@ const Home = () => {
           </div>
         )}
       </main>
-
-      <footer className={styles.footer}>
-        <div>v{version}</div>
-        <a
-          href="https://honkytonk.in"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Powered by honkytonkin'
-        </a>
-      </footer>
+      <Footer />
     </div>
   )
 }
