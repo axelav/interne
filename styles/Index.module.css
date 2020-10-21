@@ -36,6 +36,10 @@
   transition: color 0.15s ease, border-color 0.15s ease;
 }
 
+.hidden {
+  opacity: 50%;
+}
+
 .card:hover,
 .card:focus,
 .card:active {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import Head from 'next/head'
-// import sortBy from 'sort-by'
+import orderBy from 'lodash.orderby'
+import omit from 'lodash.omit'
 import { DateTime } from 'luxon'
 import CreateEntryForm from '../components/CreateEntryForm'
 import Header from '../components/Header'
@@ -12,40 +13,48 @@ import { name } from '../package.json'
 import pageStyles from '../styles/Pages.module.css'
 import styles from '../styles/Index.module.css'
 
-// TODO refactor this, sorting, setting state, saving to storage, etc as a func
-const setVisibility = (entry) => {
-  let visible = true
-
-  if (entry.dismissedAt) {
-    const nextViewingDate = DateTime.fromISO(entry.dismissedAt).plus({
-      [entry.interval]: entry.duration,
-    })
-    const diff = nextViewingDate.diffNow()
-
-    visible = diff < 0
-  }
-
-  return {
-    ...entry,
-    visible,
-  }
-}
-
 const Index = () => {
   const [entries, setEntries] = useState([])
   const [mode, setMode] = useState(MODES.VIEW)
   const [isFilterActive, setIsFilterActive] = useState(true)
+
+  const handleEntiresChange = (entries) => {
+    const setVisibility = (entry) => {
+      let visible = true
+      let diff
+
+      if (entry.dismissedAt) {
+        const nextViewingDate = DateTime.fromISO(entry.dismissedAt).plus({
+          [entry.interval]: entry.duration,
+        })
+        diff = nextViewingDate.diffNow().toObject().milliseconds
+
+        visible = diff < 0
+      }
+
+      return {
+        ...entry,
+        diff,
+        visible,
+      }
+    }
+
+    const orderedEntries = orderBy(
+      entries.map(setVisibility),
+      ['visible', 'diff', 'createdAt'],
+      ['desc', 'asc', 'asc']
+    )
+
+    setEntries(orderedEntries)
+    saveEntries(orderedEntries.map((x) => omit(x, ['diff', 'visible'])))
+  }
 
   useEffect(() => {
     if (entries.length < 1) {
       const result = retrieveEntries()
 
       if (!!result) {
-        const sorted = result.map(setVisibility)
-        // TODO
-        // .sort(sortBy('dismissedAt'))
-
-        setEntries(sorted)
+        handleEntiresChange(result)
       }
     }
   }, [entries])
@@ -58,10 +67,7 @@ const Index = () => {
       dismissedAt: new Date().toISOString(),
     })
 
-    const sorted = nextEntries.map(setVisibility)
-
-    setEntries(sorted)
-    saveEntries(sorted)
+    handleEntiresChange(nextEntries)
   }
 
   const handleViewFilterClick = () => setIsFilterActive(!isFilterActive)
@@ -79,8 +85,7 @@ const Index = () => {
         {mode === MODES.CREATE ? (
           <CreateEntryForm
             onSubmit={(x) => {
-              setEntries([...entries, x].map(setVisibility))
-              saveEntries([...entries, x].map(setVisibility))
+              handleEntiresChange([...entries, x])
               setMode(MODES.VIEW)
             }}
           />
@@ -91,7 +96,9 @@ const Index = () => {
               .map((x) => (
                 <a
                   key={x.id}
-                  className={styles.card}
+                  className={
+                    x.visible ? styles.card : `${styles.card} ${styles.hidden}`
+                  }
                   href={x.url}
                   target="_blank"
                   rel="noopener noreferrer"
