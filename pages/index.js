@@ -72,6 +72,10 @@ const Index = () => {
 
   const handleViewFilterClick = () => setIsFilterActive(!isFilterActive)
 
+  const visibleEntries = entries.filter((x) =>
+    isFilterActive ? x.visible : true
+  )
+
   return (
     <div className={pageStyles.container}>
       <Head>
@@ -91,9 +95,8 @@ const Index = () => {
           />
         ) : (
           <div className={styles.grid}>
-            {entries
-              .filter((x) => (isFilterActive ? x.visible : true))
-              .map((x) => (
+            {visibleEntries.length > 0 ? (
+              visibleEntries.map((x) => (
                 <a
                   key={x.id}
                   className={
@@ -107,7 +110,12 @@ const Index = () => {
                   <h3>{x.title} &rarr;</h3>
                   <p title={x.description}>{x.description}</p>
                 </a>
-              ))}
+              ))
+            ) : (
+              <p className={styles.empty} title="Go outside!">
+                Iru eksteren!
+              </p>
+            )}
           </div>
         )}
       </main>

@@ -19,7 +19,6 @@
   flex-wrap: wrap;
   width: 100%;
   max-width: 800px;
-  /* margin-bottom: 2rem; */
 }
 
 .card {
@@ -34,6 +33,11 @@
   border: 1px solid #eee;
   border-radius: 1rem;
   transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.empty {
+  font-size: 1.25rem;
+  font-style: italic;
 }
 
 .hidden {
