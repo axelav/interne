@@ -9,6 +9,7 @@ import { saveEntries, retrieveEntries } from '../services/storage'
 import { toTitleCase } from '../utils/formatters'
 import { MODES } from '../utils/constants'
 import { name } from '../package.json'
+import pageStyles from '../styles/Pages.module.css'
 import styles from '../styles/Index.module.css'
 
 // TODO refactor this, sorting, setting state, saving to storage, etc as a func
@@ -30,7 +31,7 @@ const setVisibility = (entry) => {
   }
 }
 
-const Home = () => {
+const Index = () => {
   const [entries, setEntries] = useState([])
   const [mode, setMode] = useState(MODES.VIEW)
   const [isFilterActive, setIsFilterActive] = useState(true)
@@ -66,7 +67,7 @@ const Home = () => {
   const handleViewFilterClick = () => setIsFilterActive(!isFilterActive)
 
   return (
-    <div className={styles.container}>
+    <div className={pageStyles.container}>
       <Head>
         <title>{toTitleCase(name)}</title>
         <link rel="icon" href="/favicon.ico" />
@@ -74,7 +75,7 @@ const Home = () => {
 
       <Header mode={mode} setMode={setMode} />
 
-      <main className={styles.main}>
+      <main className={pageStyles.main}>
         {mode === MODES.CREATE ? (
           <CreateEntryForm
             onSubmit={(x) => {
@@ -121,4 +122,4 @@ const Home = () => {
   )
 }
 
-export default Home
+export default Index

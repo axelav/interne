@@ -38,7 +38,7 @@ Input.defaultProps = {
 
 const Button = ({ label, onClick }) => {
   return (
-    <div className={styles['flex-center']}>
+    <div className={styles['button-container']}>
       <button className={styles.button} type="button" onClick={onClick}>
         {label}
       </button>

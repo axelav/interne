@@ -1,5 +1,11 @@
-.container {
+.container,
+.button-container {
   margin-bottom: 1rem;
+}
+
+.button-container {
+  display: flex;
+  justify-content: center;
 }
 
 .form {
@@ -43,8 +49,8 @@
 .button {
   font-size: 1.5rem;
   border: 1px solid #ccc;
+  border-radius: 0.5rem;
   background: #f4f4f4;
-  border-radius: 0.125rem;
   display: flex;
   justify-content: center;
   padding: 0.5rem 1rem;
@@ -64,11 +70,6 @@
 .button::-moz-focus-inner {
   border: 0;
   padding: 0;
-}
-
-.flex-center {
-  display: flex;
-  justify-content: center;
 }
 
 .error {

@@ -35,7 +35,7 @@ const Header = ({ mode, setMode }) => (
       </div>
     )}
 
-    <div className={styles['current-date']}>
+    <div className={styles.date}>
       {DateTime.local().toLocaleString(DateTime.DATE_MED)}
     </div>
   </header>

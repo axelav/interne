@@ -15,7 +15,7 @@
 }
 
 .title,
-.current-date {
+.date {
   font-size: 1.25rem;
   line-height: 1.5;
   width: 150px;
@@ -28,7 +28,7 @@
   font-style: italic;
 }
 
-.current-date {
+.date {
   font-family: athelas, georgia, serif;
   text-align: right;
 }
@@ -41,7 +41,7 @@
 }
 
 @media (max-width: 600px) {
-  .current-date {
+  .date {
     display: none;
   }
 }
