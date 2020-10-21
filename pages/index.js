@@ -22,12 +22,13 @@ const Index = () => {
     const setVisibility = (entry) => {
       let visible = true
       let diff
+      let nextAvailableDate
 
       if (entry.dismissedAt) {
-        const nextViewingDate = DateTime.fromISO(entry.dismissedAt).plus({
+        nextAvailableDate = DateTime.fromISO(entry.dismissedAt).plus({
           [entry.interval]: entry.duration,
         })
-        diff = nextViewingDate.diffNow().toObject().milliseconds
+        diff = nextAvailableDate.diffNow().toObject().milliseconds
 
         visible = diff < 0
       }
@@ -36,6 +37,10 @@ const Index = () => {
         ...entry,
         diff,
         visible,
+        availableAt:
+          nextAvailableDate && !visible
+            ? nextAvailableDate.toRelative()
+            : undefined,
       }
     }
 
@@ -46,7 +51,9 @@ const Index = () => {
     )
 
     setEntries(orderedEntries)
-    saveEntries(orderedEntries.map((x) => omit(x, ['diff', 'visible'])))
+    saveEntries(
+      orderedEntries.map((x) => omit(x, ['diff', 'visible', 'availableAt']))
+    )
   }
 
   useEffect(() => {
@@ -57,6 +64,11 @@ const Index = () => {
         handleEntiresChange(result)
       }
     }
+  }, [entries])
+
+  useEffect(() => {
+    const interval = setInterval(() => handleEntiresChange(entries), 1000 * 60)
+    return () => clearInterval(interval)
   }, [entries])
 
   const handleEntryClick = (entry) => {
@@ -100,7 +112,7 @@ const Index = () => {
                 <a
                   key={x.id}
                   className={
-                    x.visible ? styles.card : `${styles.card} ${styles.hidden}`
+                    x.visible ? styles.card : `${styles.card} ${styles.foggy}`
                   }
                   href={x.url}
                   target="_blank"
@@ -109,6 +121,7 @@ const Index = () => {
                 >
                   <h3>{x.title} &rarr;</h3>
                   <p title={x.description}>{x.description}</p>
+                  {!x.visible && <div>Available {x.availableAt}</div>}
                 </a>
               ))
             ) : (

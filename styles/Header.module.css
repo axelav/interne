@@ -16,20 +16,19 @@
 
 .title,
 .date {
+  font-family: athelas, georgia, serif;
   font-size: 1.25rem;
   line-height: 1.5;
   width: 150px;
+  font-style: italic;
 }
 
 .title {
   margin: 0;
-  font-family: athelas, georgia, serif;
   font-weight: 400;
-  font-style: italic;
 }
 
 .date {
-  font-family: athelas, georgia, serif;
   text-align: right;
 }
 
