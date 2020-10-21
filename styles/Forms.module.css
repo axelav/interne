@@ -47,23 +47,25 @@
 }
 
 .button {
-  font-size: 1.5rem;
+  font-size: 1rem;
+  font-weight: 700;
   border: 1px solid #ccc;
   border-radius: 0.5rem;
   background: #f4f4f4;
   display: flex;
   justify-content: center;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 1.5rem;
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
-
 .button:hover,
-.button:focus,
+.button:focus {
+  background: #eee;
+}
+
 .button:active {
-  background: #fff;
-  color: #357edd;
-  border-color: #357edd;
+  background: #ccc;
+  border-color: #aaa;
 }
 
 .input::-moz-focus-inner,

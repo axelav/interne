@@ -69,7 +69,7 @@ const CreateEntryForm = ({ onSubmit }) => {
           display: toTitleCase(x),
         }))}
       />
-      <Button label="Add" onClick={handleSubmit} />
+      <Button label="Add Entry" onClick={handleSubmit} />
     </Form>
   )
 }
