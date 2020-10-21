@@ -5,7 +5,10 @@
   "scripts": {
     "dev": "next dev -p 4200",
     "build": "next build",
-    "start": "next start"
+    "start": "next start",
+    "deploy:dev": "now",
+    "deploy:staging": "now --prod",
+    "deploy:prod": "now --prod && now alias set https://interne.vercel.app interne.honkytonk.in"
   },
   "dependencies": {
     "luxon": "^1.24.1",
