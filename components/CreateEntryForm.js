@@ -6,6 +6,16 @@ import { toTitleCase } from '../utils/formatters'
 import { INTERVALS } from '../utils/constants'
 import styles from '../styles/Forms.module.css'
 
+const isValidUrl = (str) => {
+  try {
+    new URL(str)
+  } catch (_) {
+    return false
+  }
+
+  return true
+}
+
 const CreateEntryForm = ({ onSubmit, ...props }) => {
   const [url, setUrl] = useState(props.url || '')
   const [title, setTitle] = useState(props.title || '')
@@ -17,6 +27,12 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
   const handleSubmit = () => {
     if (!url || !title) {
       setError('URL and Title are required.')
+    } else if (!isValidUrl(url)) {
+      setError('URL is invalid.')
+    } else if (!duration) {
+      setError('Duration is required.')
+    } else if (duration < 1) {
+      setError('Duration must be greater than 0.')
     } else {
       setError('')
 
@@ -46,7 +62,12 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
   return (
     <Form>
       {!!error && <div className={styles.error}>{error}</div>}
-      <Input value={url} label="URL" onChange={setUrl} />
+      <Input
+        value={url}
+        label="URL"
+        placeholder="http://example.com"
+        onChange={setUrl}
+      />
       <Input value={title} label="Title" onChange={setTitle} />
       <Input
         value={description}

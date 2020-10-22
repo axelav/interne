@@ -19,6 +19,21 @@ const Index = () => {
   const [mode, setMode] = useState(MODES.VIEW)
   const [isFilterActive, setIsFilterActive] = useState(true)
 
+  useEffect(() => {
+    if (entries.length < 1) {
+      const result = retrieveEntries()
+
+      if (!!result) {
+        handleEntiresChange(result)
+      }
+    }
+  }, [entries])
+
+  useEffect(() => {
+    const interval = setInterval(() => handleEntiresChange(entries), 1000 * 15)
+    return () => clearInterval(interval)
+  }, [entries])
+
   const handleEntiresChange = (entries) => {
     const setVisibility = (entry) => {
       let visible = true
@@ -56,21 +71,6 @@ const Index = () => {
       orderedEntries.map((x) => omit(x, ['diff', 'visible', 'availableAt']))
     )
   }
-
-  useEffect(() => {
-    if (entries.length < 1) {
-      const result = retrieveEntries()
-
-      if (!!result) {
-        handleEntiresChange(result)
-      }
-    }
-  }, [entries])
-
-  useEffect(() => {
-    const interval = setInterval(() => handleEntiresChange(entries), 1000 * 15)
-    return () => clearInterval(interval)
-  }, [entries])
 
   const handleEntryClick = (entry) => {
     const nextEntries = entries.filter((x) => x.id !== entry.id)
