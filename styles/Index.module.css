@@ -23,7 +23,6 @@
 
 .card {
   margin: 0 1rem 2rem;
-  min-height: 125px;
   flex-basis: 45%;
   max-width: 45%;
   padding: 1.5rem;
@@ -32,7 +31,7 @@
   text-decoration: none;
   background: #f4f4f4;
   border: 1px solid #ccc;
-  border-radius: 1rem;
+  border-radius: 0.5rem;
   transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
 }
 
@@ -47,12 +46,16 @@
 }
 
 .card h3 {
-  margin: 0 0 1rem 0;
+  margin: 0 0 0.5rem;
   font-size: 1.5rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .card p {
-  margin: 0;
+  height: 30px;
+  margin: 0 0 0.5rem;
   font-size: 1.25rem;
   line-height: 1.5;
   font-family: athelas, georgia, serif;
@@ -60,6 +63,26 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.availability {
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.controls {
+  font-size: 0.875rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.edit,
+.delete {
+  cursor: pointer;
+}
+
+.edit {
+  margin-right: 0.5rem;
 }
 
 .empty {

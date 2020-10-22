@@ -15,6 +15,7 @@ import styles from '../styles/Index.module.css'
 
 const Index = () => {
   const [entries, setEntries] = useState([])
+  const [entry, setEntry] = useState(null)
   const [mode, setMode] = useState(MODES.VIEW)
   const [isFilterActive, setIsFilterActive] = useState(true)
 
@@ -84,6 +85,21 @@ const Index = () => {
 
   const handleViewFilterClick = () => setIsFilterActive(!isFilterActive)
 
+  const handleEditEntry = (entry) => {
+    setEntry(entry)
+    setMode(MODES.EDIT)
+  }
+
+  const handleDeleteEntry = (entry) => {
+    const shouldDelete = global.confirm('Are you sure?')
+
+    if (shouldDelete) {
+      const nextEntries = entries.filter((x) => x.id !== entry.id)
+
+      handleEntiresChange(nextEntries)
+    }
+  }
+
   const visibleEntries = entries.filter((x) =>
     isFilterActive ? x.visible : true
   )
@@ -95,34 +111,57 @@ const Index = () => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <Header mode={mode} setMode={setMode} />
+      <Header mode={mode} setMode={setMode} setEntry={setEntry} />
 
       <main className={pageStyles.main}>
-        {mode === MODES.CREATE ? (
+        {mode === MODES.EDIT ? (
           <CreateEntryForm
             onSubmit={(x) => {
-              handleEntiresChange([...entries, x])
+              handleEntiresChange([...entries.filter((y) => y.id !== x.id), x])
               setMode(MODES.VIEW)
             }}
+            {...entry}
           />
         ) : (
           <div className={styles.grid}>
             {visibleEntries.length > 0 ? (
               visibleEntries.map((x) => (
-                <a
+                <div
                   key={x.id}
                   className={
                     x.visible ? styles.card : `${styles.card} ${styles.foggy}`
                   }
-                  href={x.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => handleEntryClick(x)}
                 >
-                  <h3>{x.title} &rarr;</h3>
-                  <p title={x.description}>{x.description}</p>
-                  {!x.visible && <div>Available {x.availableAt}</div>}
-                </a>
+                  {!x.visible && (
+                    <div className={styles.availability}>
+                      Available {x.availableAt}
+                    </div>
+                  )}
+                  <a
+                    href={x.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() => handleEntryClick(x)}
+                  >
+                    <h3 title={x.title}>{x.title} &rarr;</h3>
+                    <p title={x.description}>{x.description}</p>
+                  </a>
+
+                  <div className={styles.controls}>
+                    <div
+                      className={styles.edit}
+                      onClick={() => handleEditEntry(x)}
+                    >
+                      Edit
+                    </div>
+                    <div
+                      className={styles.delete}
+                      onClick={() => handleDeleteEntry(x)}
+                    >
+                      Delete
+                    </div>
+                  </div>
+                </div>
               ))
             ) : (
               <p className={styles.empty} title="Go outside!">

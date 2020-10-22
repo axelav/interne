@@ -7,7 +7,7 @@ import { MODES } from '../utils/constants'
 import { name } from '../package.json'
 import styles from '../styles/Header.module.css'
 
-const Header = ({ mode, setMode }) => (
+const Header = ({ mode, setMode, setEntry }) => (
   <header className={styles.header}>
     <h1 className={styles.title}>
       <Link href="/">
@@ -19,19 +19,21 @@ const Header = ({ mode, setMode }) => (
       <div
         className={styles.mode}
         onClick={() => {
+          setEntry(null)
+
           switch (mode) {
-            case MODES.CREATE:
+            case MODES.EDIT:
               setMode(MODES.VIEW)
               break
             case MODES.VIEW:
-              setMode(MODES.CREATE)
+              setMode(MODES.EDIT)
               break
             default:
               setMode(MODES.VIEW)
           }
         }}
       >
-        {mode === MODES.CREATE ? 'View Entires' : 'Add Entry'}
+        {mode === MODES.EDIT ? 'View Entires' : 'Add Entry'}
       </div>
     )}
 
@@ -42,7 +44,7 @@ const Header = ({ mode, setMode }) => (
 )
 
 Header.propTypes = {
-  mode: PropTypes.oneOf([MODES.VIEW, MODES.CREATE]),
+  mode: PropTypes.oneOf([MODES.VIEW, MODES.EDIT]),
   setMode: PropTypes.func,
 }
 

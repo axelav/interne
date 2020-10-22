@@ -2,12 +2,12 @@ const INTERVALS = {
   DAYS: 'days',
   WEEKS: 'weeks',
   MONTHS: 'months',
-  years: 'years',
+  YEARS: 'years',
 }
 
 const MODES = {
   VIEW: 'view',
-  CREATE: 'create',
+  EDIT: 'edit',
 }
 
 export { INTERVALS, MODES }

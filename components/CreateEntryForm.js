@@ -6,12 +6,12 @@ import { toTitleCase } from '../utils/formatters'
 import { INTERVALS } from '../utils/constants'
 import styles from '../styles/Forms.module.css'
 
-const CreateEntryForm = ({ onSubmit }) => {
-  const [url, setUrl] = useState('')
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
-  const [duration, setDuration] = useState(3)
-  const [interval, setInterval] = useState(INTERVALS.DAYS)
+const CreateEntryForm = ({ onSubmit, ...props }) => {
+  const [url, setUrl] = useState(props.url || '')
+  const [title, setTitle] = useState(props.title || '')
+  const [description, setDescription] = useState(props.description || '')
+  const [duration, setDuration] = useState(props.duration || 3)
+  const [interval, setInterval] = useState(props.interval || INTERVALS.DAYS)
   const [error, setError] = useState('')
 
   const handleSubmit = () => {
@@ -27,10 +27,10 @@ const CreateEntryForm = ({ onSubmit }) => {
         duration,
         interval,
         visited: 0,
-        id: uuidv4(),
-        createdAt: new Date().toISOString(),
-        updatedAt: null,
-        dismissedAt: null,
+        id: props.id || uuidv4(),
+        createdAt: props.createdAt || new Date().toISOString(),
+        updatedAt: props.createdAt ? new Date().toISOString() : null,
+        dismissedAt: props.dismissedAt || null,
       }
 
       onSubmit(entry)
@@ -69,13 +69,29 @@ const CreateEntryForm = ({ onSubmit }) => {
           display: toTitleCase(x),
         }))}
       />
-      <Button label="Add Entry" onClick={handleSubmit} />
+      <Button
+        label={props.id ? 'Edit Entry' : 'Add Entry'}
+        onClick={handleSubmit}
+      />
     </Form>
   )
 }
 
 CreateEntryForm.propTypes = {
   onSubmit: PropTypes.func.isRequired,
+  id: PropTypes.string,
+  url: PropTypes.string,
+  title: PropTypes.string,
+  description: PropTypes.string,
+  duration: PropTypes.number,
+  interval: PropTypes.oneOf([
+    INTERVALS.DAYS,
+    INTERVALS.WEEKS,
+    INTERVALS.MONTHS,
+    INTERVALS.YEARS,
+  ]),
+  createdAt: PropTypes.string,
+  dismissedAt: PropTypes.string,
 }
 
 export default CreateEntryForm
