@@ -73,14 +73,16 @@ const Index = () => {
   }
 
   const handleEntryClick = (entry) => {
-    const nextEntries = entries.filter((x) => x.id !== entry.id)
-    nextEntries.push({
-      ...entry,
-      visited: ++entry.visited,
-      dismissedAt: new Date().toISOString(),
-    })
+    setTimeout(() => {
+      const nextEntries = entries.filter((x) => x.id !== entry.id)
+      nextEntries.push({
+        ...entry,
+        visited: ++entry.visited,
+        dismissedAt: new Date().toISOString(),
+      })
 
-    handleEntiresChange(nextEntries)
+      handleEntiresChange(nextEntries)
+    }, 500)
   }
 
   const handleViewFilterClick = () => setIsFilterActive(!isFilterActive)
