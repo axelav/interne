@@ -22,7 +22,8 @@
   font-style: italic;
 }
 
-.input {
+.input,
+.textarea {
   font-size: 1.25rem;
   border: 1px solid #eee;
   background: #f4f4f4;
@@ -32,6 +33,12 @@
   padding: 0.25rem 0.5rem;
   -webkit-appearance: none;
   -moz-appearance: none;
+}
+
+.textarea {
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier,
+    monospace;
+  min-height: 80vh;
 }
 
 .select {
@@ -69,7 +76,8 @@
 }
 
 .input::-moz-focus-inner,
-.button::-moz-focus-inner {
+.button::-moz-focus-inner,
+.textarea::-moz-focus-inner {
   border: 0;
   padding: 0;
 }

@@ -86,4 +86,23 @@ Select.propTypes = {
   onChange: PropTypes.func.isRequired,
 }
 
-export { Form, Input, Button, Select }
+const Textarea = ({ label, value, onChange }) => {
+  return (
+    <div className={styles.container}>
+      {!!label && <label className={styles.label}>{label}</label>}
+      <textarea
+        className={styles.textarea}
+        value={value}
+        onChange={(x) => onChange(x.currentTarget.value)}
+      />
+    </div>
+  )
+}
+
+Textarea.propTypes = {
+  label: PropTypes.string,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  onChange: PropTypes.func.isRequired,
+}
+
+export { Form, Input, Button, Select, Textarea }
