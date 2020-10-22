@@ -84,7 +84,7 @@ const Data = () => {
         <Form>
           {!!error && <div className={formStyles.error}>{error}</div>}
           <Textarea value={entries} label="Your Data" onChange={setEntries} />
-          <Button label="Save Data" onClick={handleSave} />
+          <Button label="Import" onClick={handleSave} />
         </Form>
       </main>
 
