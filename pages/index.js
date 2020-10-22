@@ -132,11 +132,19 @@ const Index = () => {
                     x.visible ? styles.card : `${styles.card} ${styles.foggy}`
                   }
                 >
-                  {!x.visible && (
-                    <div className={styles.availability}>
-                      Available {x.availableAt}
-                    </div>
-                  )}
+                  <div className={styles.availability}>
+                    {!x.visible ? (
+                      <span>Available {x.availableAt}</span>
+                    ) : (
+                      <span>
+                        {x.dismissedAt
+                          ? `Last viewed ${DateTime.fromISO(
+                              x.dismissedAt
+                            ).toRelative()}`
+                          : 'Never viewed'}
+                      </span>
+                    )}
+                  </div>
                   <a
                     href={x.url}
                     target="_blank"
