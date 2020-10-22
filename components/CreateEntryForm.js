@@ -20,7 +20,7 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
   const [url, setUrl] = useState(props.url || '')
   const [title, setTitle] = useState(props.title || '')
   const [description, setDescription] = useState(props.description || '')
-  const [duration, setDuration] = useState(props.duration || 3)
+  const [duration, setDuration] = useState(props.duration || '3')
   const [interval, setInterval] = useState(props.interval || INTERVALS.DAYS)
   const [error, setError] = useState('')
 
@@ -104,7 +104,7 @@ CreateEntryForm.propTypes = {
   url: PropTypes.string,
   title: PropTypes.string,
   description: PropTypes.string,
-  duration: PropTypes.number,
+  duration: PropTypes.string,
   interval: PropTypes.oneOf([
     INTERVALS.DAYS,
     INTERVALS.WEEKS,

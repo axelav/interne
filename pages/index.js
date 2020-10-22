@@ -143,7 +143,7 @@ const Index = () => {
                     rel="noopener noreferrer"
                     onClick={() => handleEntryClick(x)}
                   >
-                    <h3 title={x.title}>{x.title} &rarr;</h3>
+                    <h2 title={x.title}>{x.title} &rarr;</h2>
                     <p title={x.description}>{x.description}</p>
                   </a>
 
