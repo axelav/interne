@@ -182,15 +182,18 @@ const Index = () => {
         )}
       </main>
 
+      {/* TODO */}
+      {/* - show Search input when viewing all entries */}
+      {/* - focus on Search with `/` character press? */}
       {mode === MODES.VIEW && (
         <div
           className={styles.filter}
           onClick={handleViewFilterClick}
           style={{
-            left: isFilterActive ? '-14px' : '-28px',
+            left: isFilterActive ? '-14px' : '-41px',
           }}
         >
-          {isFilterActive ? 'View All' : <span>Viewing All</span>}
+          {isFilterActive ? 'View All' : <span>View Available</span>}
         </div>
       )}
 
