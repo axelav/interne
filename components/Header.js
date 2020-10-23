@@ -46,6 +46,8 @@ const Header = ({ mode, setMode, setEntry }) => (
 Header.propTypes = {
   mode: PropTypes.oneOf([MODES.VIEW, MODES.EDIT]),
   setMode: PropTypes.func,
+  // TODO I don't like passing this in here
+  setEntry: PropTypes.func,
 }
 
 export default Header
