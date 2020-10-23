@@ -5,6 +5,8 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'avenir next', avenir,
     'helvetica neue', helvetica, ubuntu, roboto, noto, 'segoe ui', arial,
     sans-serif;
+  /* TODO do I like this? */
+  color: rgba(0, 0, 0, 0.8);
 }
 
 a {
