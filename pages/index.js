@@ -23,7 +23,7 @@ const Index = () => {
     if (entries.length < 1) {
       const result = retrieveEntries()
 
-      if (!!result) {
+      if (!!result && result.length > 0) {
         handleEntiresChange(result)
       }
     }
