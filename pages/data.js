@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import Head from 'next/head'
+import { useRouter } from 'next/router'
 import { v4 as uuidv4 } from 'uuid'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
@@ -15,6 +16,7 @@ import formStyles from '../styles/Forms.module.css'
 const Data = () => {
   const [entries, setEntries] = useState('')
   const [error, setError] = useState('')
+  const router = useRouter()
 
   useEffect(() => {
     if (entries.length < 1) {
@@ -60,15 +62,7 @@ const Data = () => {
       })
     )
 
-    setEntries(
-      JSON.stringify(
-        retrieveEntries().map((x) =>
-          omit(x, ['diff', 'visible', 'availableAt'])
-        ),
-        null,
-        2
-      )
-    )
+    router.push('/')
   }
 
   return (
