@@ -131,7 +131,9 @@ const Index = () => {
                 <div
                   key={x.id}
                   className={
-                    x.visible ? styles.card : `${styles.card} ${styles.foggy}`
+                    x.visible
+                      ? styles.card
+                      : `${styles.card} ${styles.unavailable}`
                   }
                 >
                   <div className={styles.availability}>

@@ -44,6 +44,19 @@
   background: #eee;
 }
 
+.unavailable {
+  opacity: 30%;
+}
+
+.unavailable:hover,
+.unavailable:focus {
+  background: #fff;
+}
+
+.card:active {
+  opacity: 60%;
+}
+
 .card h2 {
   margin: 0 0 0.5rem;
   font-size: 1.5rem;
@@ -87,10 +100,6 @@
 .empty {
   font-size: 1.25rem;
   font-style: italic;
-}
-
-.foggy {
-  opacity: 35%;
 }
 
 @media (max-width: 600px) {
