@@ -1,4 +1,5 @@
 .container {
+  background: #fafafa;
   padding: 0 0.5rem;
   display: flex;
   flex-direction: column;

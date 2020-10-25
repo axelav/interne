@@ -26,7 +26,6 @@
 .textarea {
   font-size: 1.25rem;
   border: 1px solid #ddd;
-  background: #fafafa;
   border-radius: 0.125rem;
   display: block;
   width: 100%;
@@ -45,7 +44,6 @@
   font-size: 1.25rem;
   border: 1px solid #ddd;
   border-radius: 0.125rem;
-  background: #fafafa;
   display: block;
   width: 100%;
   padding: 0.25rem 0.5rem;
@@ -56,7 +54,7 @@
 .button {
   font-size: 1rem;
   font-weight: 700;
-  background: #fafafa;
+  background: #fff;
   border: 1px solid #ddd;
   border-radius: 0.5rem;
   display: flex;

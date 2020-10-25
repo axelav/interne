@@ -8,9 +8,8 @@
   flex-direction: column;
   font-family: athelas, georgia, serif;
   font-style: italic;
-  font-size: 1.125rem;
   line-height: 1.5;
-  color: #ccc;
+  color: rgba(0, 0, 0, 0.3);
 }
 
 .footer a:hover {
