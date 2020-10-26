@@ -20,6 +20,15 @@ const Index = () => {
   const [isFilterActive, setIsFilterActive] = useState(true)
 
   useEffect(() => {
+    const handleKeydown = ({ keyCode }) =>
+      keyCode === 27 && setIsFilterActive(!isFilterActive)
+
+    document.addEventListener('keydown', handleKeydown)
+
+    return () => document.removeEventListener('keydown', handleKeydown)
+  }, [isFilterActive])
+
+  useEffect(() => {
     if (entries.length < 1) {
       const result = retrieveEntries()
 
