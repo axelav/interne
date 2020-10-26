@@ -20,13 +20,20 @@ const Index = () => {
   const [isFilterActive, setIsFilterActive] = useState(true)
 
   useEffect(() => {
-    const handleKeydown = ({ keyCode }) =>
-      keyCode === 27 && setIsFilterActive(!isFilterActive)
+    const handleKeydown = ({ keyCode }) => {
+      if (keyCode === 27) {
+        if (mode === MODES.EDIT) {
+          setMode(MODES.VIEW)
+        } else {
+          setIsFilterActive(!isFilterActive)
+        }
+      }
+    }
 
     document.addEventListener('keydown', handleKeydown)
 
     return () => document.removeEventListener('keydown', handleKeydown)
-  }, [isFilterActive])
+  }, [isFilterActive, mode])
 
   useEffect(() => {
     if (entries.length < 1) {
