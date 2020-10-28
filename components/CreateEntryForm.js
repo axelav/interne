@@ -106,6 +106,7 @@ CreateEntryForm.propTypes = {
   description: PropTypes.string,
   duration: PropTypes.string,
   interval: PropTypes.oneOf([
+    INTERVALS.HOURS,
     INTERVALS.DAYS,
     INTERVALS.WEEKS,
     INTERVALS.MONTHS,
