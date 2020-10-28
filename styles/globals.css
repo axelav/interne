@@ -5,7 +5,6 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'avenir next', avenir,
     'helvetica neue', helvetica, ubuntu, roboto, noto, 'segoe ui', arial,
     sans-serif;
-  /* TODO do I like this? */
   color: rgba(0, 0, 0, 0.8);
 }
 
@@ -16,4 +15,23 @@ a {
 
 * {
   box-sizing: border-box;
+}
+
+.fade-enter {
+  opacity: 0;
+}
+
+.fade-enter-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 200ms, transform 200ms;
+}
+
+.fade-exit {
+  opacity: 1;
+}
+
+.fade-exit-active {
+  opacity: 0;
+  transition: opacity 200ms, transform 200ms;
 }

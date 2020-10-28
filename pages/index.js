@@ -13,11 +13,25 @@ import { name } from '../package.json'
 import pageStyles from '../styles/Pages.module.css'
 import styles from '../styles/Index.module.css'
 
+const msgs = [
+  {
+    en: 'Read a book!',
+    eo: 'Legi libron!',
+  },
+  {
+    en: 'Go outside!',
+    eo: 'Iru eksteren!',
+  },
+]
+
 const Index = () => {
   const [entries, setEntries] = useState([])
   const [entry, setEntry] = useState(null)
   const [mode, setMode] = useState(MODES.VIEW)
   const [isFilterActive, setIsFilterActive] = useState(true)
+  const [searchText, setSearchText] = useState('')
+
+  const emptyListMsg = msgs[Math.floor(Math.random() * msgs.length)]
 
   useEffect(() => {
     const handleKeydown = ({ keyCode }) => {
@@ -103,6 +117,11 @@ const Index = () => {
 
   const handleViewFilterClick = () => setIsFilterActive(!isFilterActive)
 
+  const handeSaveEntry = (x) => {
+    handleEntiresChange([...entries.filter((y) => y.id !== x.id), x])
+    setMode(MODES.VIEW)
+  }
+
   const handleEditEntry = (entry) => {
     setEntry(entry)
     setMode(MODES.EDIT)
@@ -118,9 +137,19 @@ const Index = () => {
     }
   }
 
-  const visibleEntries = entries.filter((x) =>
-    isFilterActive ? x.visible : true
-  )
+  // TODO use ReactCSSTransitionGroup
+  const visibleEntries = entries.filter((x) => {
+    const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp(escapeRegExp(searchText), 'gi')
+    const match =
+      x.title.match(regex) || x.description.match(regex) || x.url.match(regex)
+
+    if (searchText) {
+      return !!match
+    } else {
+      return isFilterActive ? x.visible : true
+    }
+  })
 
   return (
     <div className={pageStyles.container}>
@@ -129,17 +158,17 @@ const Index = () => {
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <Header mode={mode} setMode={setMode} setEntry={setEntry} />
+      <Header
+        mode={mode}
+        setMode={setMode}
+        setEntry={setEntry}
+        searchText={searchText}
+        setSearchText={setSearchText}
+      />
 
       <main className={pageStyles.main}>
         {mode === MODES.EDIT ? (
-          <CreateEntryForm
-            onSubmit={(x) => {
-              handleEntiresChange([...entries.filter((y) => y.id !== x.id), x])
-              setMode(MODES.VIEW)
-            }}
-            {...entry}
-          />
+          <CreateEntryForm onSubmit={handeSaveEntry} {...entry} />
         ) : (
           <div className={styles.grid}>
             {visibleEntries.length > 0 ? (
@@ -192,8 +221,11 @@ const Index = () => {
                 </div>
               ))
             ) : (
-              <p className={styles.empty} title="Go outside!">
-                Iru eksteren!
+              <p
+                className={styles.empty}
+                title={!!searchText ? 'No results.' : emptyListMsg.en}
+              >
+                {!!searchText ? 'Neniuj rezultoj.' : emptyListMsg.eo}
               </p>
             )}
           </div>
