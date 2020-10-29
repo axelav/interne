@@ -61,7 +61,11 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
           onExited={() => setShowDate(true)}
         >
           <div>
-            <Input value={searchText} onChange={setSearchText} />
+            <Input
+              value={searchText}
+              onChange={setSearchText}
+              placeholder="Search"
+            />
           </div>
         </CSSTransition>
 
