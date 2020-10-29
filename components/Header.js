@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef } from 'react'
 import PropTypes from 'prop-types'
 import Link from 'next/link'
 import { DateTime } from 'luxon'
@@ -12,6 +12,7 @@ import styles from '../styles/Header.module.css'
 const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
   const [showSearch, setShowSearch] = useState(false)
   const [showDate, setShowDate] = useState(true)
+  const inputRef = useRef(null)
 
   return (
     <header className={styles.header}>
@@ -57,11 +58,15 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
           timeout={200}
           classNames="fade"
           unmountOnExit
-          onEnter={() => setShowDate(false)}
+          onEnter={() => {
+            setShowDate(false)
+            inputRef.current.focus()
+          }}
           onExited={() => setShowDate(true)}
         >
           <div>
             <Input
+              ref={inputRef}
               value={searchText}
               onChange={setSearchText}
               placeholder="Search"

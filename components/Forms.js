@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { forwardRef, useRef, useImperativeHandle } from 'react'
 import PropTypes from 'prop-types'
 import styles from '../styles/Forms.module.css'
 
@@ -10,11 +10,18 @@ Form.propTypes = {
   children: PropTypes.node.isRequired,
 }
 
-const Input = ({ type, label, value, onChange, ...props }) => {
+const Input = forwardRef(({ type, label, value, onChange, ...props }, ref) => {
+  const inputRef = useRef()
+
+  useImperativeHandle(ref, () => ({
+    focus: () => inputRef.current.focus(),
+  }))
+
   return (
     <div className={styles.container}>
       {!!label && <label className={styles.label}>{label}</label>}
       <input
+        ref={inputRef}
         className={styles.input}
         type={type}
         value={value}
@@ -23,7 +30,7 @@ const Input = ({ type, label, value, onChange, ...props }) => {
       />
     </div>
   )
-}
+})
 
 Input.propTypes = {
   type: PropTypes.string.isRequired,
