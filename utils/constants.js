@@ -11,4 +11,9 @@ const MODES = {
   EDIT: 'edit',
 }
 
-export { INTERVALS, MODES }
+const KEY_CODES = {
+  ESC: 27,
+  FWD_SLASH: 191,
+}
+
+export { INTERVALS, MODES, KEY_CODES }

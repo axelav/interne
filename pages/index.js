@@ -8,7 +8,7 @@ import Header from '../components/Header'
 import Footer from '../components/Footer'
 import { saveEntries, retrieveEntries } from '../services/storage'
 import { toTitleCase } from '../utils/formatters'
-import { MODES } from '../utils/constants'
+import { MODES, KEY_CODES } from '../utils/constants'
 import { name } from '../package.json'
 import pageStyles from '../styles/Pages.module.css'
 import styles from '../styles/Index.module.css'
@@ -35,7 +35,7 @@ const Index = () => {
 
   useEffect(() => {
     const handleKeydown = ({ keyCode }) => {
-      if (keyCode === 27) {
+      if (keyCode === KEY_CODES.ESC) {
         if (mode === MODES.EDIT) {
           setMode(MODES.VIEW)
         } else {
@@ -47,7 +47,7 @@ const Index = () => {
     document.addEventListener('keydown', handleKeydown)
 
     return () => document.removeEventListener('keydown', handleKeydown)
-  }, [isFilterActive, mode])
+  }, [isFilterActive, mode, searchText])
 
   useEffect(() => {
     if (entries.length < 1) {
@@ -232,9 +232,6 @@ const Index = () => {
         )}
       </main>
 
-      {/* TODO */}
-      {/* - show Search input when viewing all entries */}
-      {/* - focus on Search with `/` character press? */}
       {mode === MODES.VIEW && (
         <div
           className={styles.filter}

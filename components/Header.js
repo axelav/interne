@@ -1,11 +1,11 @@
-import React, { useState, useRef } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import PropTypes from 'prop-types'
 import Link from 'next/link'
 import { DateTime } from 'luxon'
 import { CSSTransition } from 'react-transition-group'
 import { Input } from './Forms'
 import { toTitleCase } from '../utils/formatters'
-import { MODES } from '../utils/constants'
+import { MODES, KEY_CODES } from '../utils/constants'
 import { name } from '../package.json'
 import styles from '../styles/Header.module.css'
 
@@ -13,6 +13,45 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
   const [showSearch, setShowSearch] = useState(false)
   const [showDate, setShowDate] = useState(true)
   const inputRef = useRef(null)
+
+  useEffect(() => {
+    const handleKeydown = (ev) => {
+      if (ev.keyCode === KEY_CODES.FWD_SLASH) {
+        setShowSearch(true)
+        inputRef.current.focus()
+
+        // prevent `/` character from being used as input value
+        ev.preventDefault()
+      }
+
+      if (ev.keyCode === KEY_CODES.ESC) {
+        if (!!searchText) {
+          setSearchText('')
+          setShowSearch(false)
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeydown)
+
+    return () => document.removeEventListener('keydown', handleKeydown)
+  }, [searchText, setSearchText])
+
+  useEffect(() => {
+    if (inputRef.current) {
+      // FIXME there's a bug when you
+      // 1. enter text in input
+      // 2. blur input
+      // 3. hit `/` to focus input again
+      // 4. enter new text
+      // 5. blur - input value remains but input is hidden
+      inputRef.current.addEventListener('blur', () => {
+        if (!searchText) {
+          setShowSearch(false)
+        }
+      })
+    }
+  }, [searchText])
 
   return (
     <header className={styles.header}>
