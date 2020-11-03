@@ -48,6 +48,9 @@ const Data = () => {
     setError('')
     saveEntries(
       result.map((x) => {
+        // TODO
+        // what if you just gave everything a new id when doing an import?
+        // seems wrong but also why not?
         if (!x.id) {
           x.id = uuidv4()
           x.visited = 0

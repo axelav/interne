@@ -5,7 +5,9 @@ import styles from '../styles/Footer.module.css'
 
 const Footer = () => (
   <footer className={styles.footer}>
-    <div>v{version}</div>
+    <Link href="/about">
+      <a>v{version}</a>
+    </Link>
     <Link href="/data">
       <a>Import/Export Data</a>
     </Link>

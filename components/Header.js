@@ -60,7 +60,6 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
           <a>{toTitleCase(name)}</a>
         </Link>
       </h1>
-
       {!!mode && (
         <div
           className={styles.mode}
@@ -83,6 +82,7 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
         </div>
       )}
 
+      {/* TODO don't transition if search is disabled on page */}
       <div
         className={styles.date}
         onMouseEnter={() => setShowSearch(true)}
@@ -129,11 +129,11 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
 }
 
 Header.propTypes = {
-  mode: PropTypes.oneOf([MODES.VIEW, MODES.EDIT]).isRequired,
-  setMode: PropTypes.func.isRequired,
-  setEntry: PropTypes.func.isRequired,
+  mode: PropTypes.oneOf([MODES.VIEW, MODES.EDIT]),
+  setMode: PropTypes.func,
+  setEntry: PropTypes.func,
   searchText: PropTypes.string,
-  setSearchText: PropTypes.func.isRequired,
+  setSearchText: PropTypes.func,
 }
 
 export default Header
