@@ -17,6 +17,7 @@ const Input = forwardRef(({ type, label, value, onChange, ...props }, ref) => {
     focus: () => inputRef.current.focus(),
     addEventListener: (type, listener) =>
       inputRef.current.addEventListener(type, listener),
+    className: inputRef.current.className,
   }))
 
   return (
