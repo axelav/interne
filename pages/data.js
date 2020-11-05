@@ -9,7 +9,7 @@ import { Form, Textarea, Button } from '../components/Forms'
 import { saveEntries, retrieveEntries } from '../services/storage'
 import { toTitleCase } from '../utils/formatters'
 import { name } from '../package.json'
-import { INTERVALS } from '../utils/constants'
+import { INTERVALS, KEY_CODES } from '../utils/constants'
 import pageStyles from '../styles/Pages.module.css'
 import formStyles from '../styles/Forms.module.css'
 
@@ -33,6 +33,20 @@ const Data = () => {
       }
     }
   }, [entries])
+
+  useEffect(() => {
+    const handleKeydown = ({ keyCode }) => {
+      if (keyCode === KEY_CODES.ESC) {
+        if (document.activeElement === document.body) {
+          router.push('/')
+        }
+      }
+    }
+
+    document.addEventListener('keydown', handleKeydown)
+
+    return () => document.removeEventListener('keydown', handleKeydown)
+  }, [router])
 
   const handleSave = () => {
     let result
