@@ -38,7 +38,7 @@ const Index = () => {
       if (keyCode === KEY_CODES.ESC) {
         if (mode === MODES.EDIT) {
           setMode(MODES.VIEW)
-        } else {
+        } else if (document.activeElement === document.body) {
           setIsFilterActive(!isFilterActive)
         }
       }
