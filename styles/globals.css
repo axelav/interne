@@ -1,3 +1,13 @@
+:root {
+  /* --font-size: 15.5px; */
+  --font-color: rgba(0, 0, 0, 0.8);
+  --font-color-lighter: hsl(0, 0%, 40%);
+  --font-color-placeholder: hsl(0, 0%, 70%);
+  --link-color: hsl(203, 82%, 35%);
+  --background-color: rgb(255, 255, 255);
+  --border-color: rgba(0, 0, 0, 0.12);
+}
+
 html,
 body {
   padding: 0;
@@ -5,7 +15,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'avenir next', avenir,
     'helvetica neue', helvetica, ubuntu, roboto, noto, 'segoe ui', arial,
     sans-serif;
-  color: rgba(0, 0, 0, 0.8);
+  color: var(--font-color);
 }
 
 a {
@@ -34,4 +44,20 @@ a {
 .fade-exit-active {
   opacity: 0;
   transition: opacity 200ms, transform 200ms;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --font-color: rgba(255, 255, 255, 0.8);
+    --font-color-lighter: hsl(0, 0%, 50%);
+    --font-color-placeholder: hsl(0, 0%, 36%);
+    --link-color: hsl(203, 62%, 55%);
+    --background-color: rgba(0, 0, 0, 0.8);
+    --border-color: rgba(255, 255, 255, 0.25);
+  }
+
+  img,
+  iframe {
+    filter: invert(1) hue-rotate(180deg) !important;
+  }
 }
