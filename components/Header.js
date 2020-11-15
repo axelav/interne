@@ -15,6 +15,7 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
   const inputRef = useRef(null)
 
   useEffect(() => {
+    // TODO use a single handleKeydown in index.js
     const handleKeydown = (ev) => {
       if (ev.keyCode === KEY_CODES.FWD_SLASH) {
         if (document.activeElement === document.body) {

@@ -3,7 +3,11 @@ import PropTypes from 'prop-types'
 import styles from '../styles/Forms.module.css'
 
 const Form = ({ children }) => {
-  return <form className={styles.form}>{children}</form>
+  return (
+    <form className={styles.form} onSubmit={console.log}>
+      {children}
+    </form>
+  )
 }
 
 Form.propTypes = {

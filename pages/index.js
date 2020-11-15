@@ -168,6 +168,7 @@ const Index = () => {
 
       <main className={pageStyles.main}>
         {mode === MODES.EDIT ? (
+          // TODO should this be a new view/route?
           <CreateEntryForm onSubmit={handeSaveEntry} {...entry} />
         ) : (
           <div className={styles.grid}>
