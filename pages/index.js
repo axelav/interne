@@ -112,7 +112,7 @@ const Index = () => {
       })
 
       handleEntiresChange(nextEntries)
-    }, 500)
+    }, 200)
   }
 
   const handleViewFilterClick = () => setIsFilterActive(!isFilterActive)
