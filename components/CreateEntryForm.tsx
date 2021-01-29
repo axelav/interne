@@ -1,12 +1,12 @@
 import React, { useState } from 'react'
-import PropTypes from 'prop-types'
 import { v4 as uuidv4 } from 'uuid'
 import { Form, Input, Select, Button } from './Forms'
 import { toTitleCase } from '../utils/formatters'
 import { INTERVALS } from '../utils/constants'
+import { Entry } from '../pages/index'
 import styles from '../styles/Forms.module.css'
 
-const isValidUrl = (str) => {
+const isValidUrl = (str: string) => {
   try {
     new URL(str)
   } catch (_) {
@@ -16,7 +16,11 @@ const isValidUrl = (str) => {
   return true
 }
 
-const CreateEntryForm = ({ onSubmit, ...props }) => {
+interface CreateEntryFormInterface extends Entry {
+  onSubmit: (entry: object) => void
+}
+
+const CreateEntryForm = ({ onSubmit, ...props }: CreateEntryFormInterface) => {
   const [url, setUrl] = useState(props.url || '')
   const [title, setTitle] = useState(props.title || '')
   const [description, setDescription] = useState(props.description || '')
@@ -37,13 +41,13 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
       setError('')
 
       const entry = {
+        id: props.id || uuidv4(),
         url,
         title,
         description,
         duration,
         interval,
         visited: 0,
-        id: props.id || uuidv4(),
         createdAt: props.createdAt || new Date().toISOString(),
         updatedAt: props.createdAt ? new Date().toISOString() : null,
         dismissedAt: props.dismissedAt || null,
@@ -96,24 +100,6 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
       />
     </Form>
   )
-}
-
-CreateEntryForm.propTypes = {
-  onSubmit: PropTypes.func.isRequired,
-  id: PropTypes.string,
-  url: PropTypes.string,
-  title: PropTypes.string,
-  description: PropTypes.string,
-  duration: PropTypes.string,
-  interval: PropTypes.oneOf([
-    INTERVALS.HOURS,
-    INTERVALS.DAYS,
-    INTERVALS.WEEKS,
-    INTERVALS.MONTHS,
-    INTERVALS.YEARS,
-  ]),
-  createdAt: PropTypes.string,
-  dismissedAt: PropTypes.string,
 }
 
 export default CreateEntryForm

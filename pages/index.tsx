@@ -8,10 +8,24 @@ import Header from '../components/Header'
 import Footer from '../components/Footer'
 import { saveEntries, retrieveEntries } from '../services/storage'
 import { toTitleCase } from '../utils/formatters'
-import { MODES, KEY_CODES } from '../utils/constants'
+import { VIEW, EDIT, KEY_CODES } from '../utils/constants'
 import { name } from '../package.json'
 import pageStyles from '../styles/Pages.module.css'
 import styles from '../styles/Index.module.css'
+
+// TODO move types somewhere else?
+export interface Entry {
+  id?: string
+  url: string
+  title: string
+  description?: string
+  duration: number | string
+  interval: 'hours' | 'days' | 'weeks' | 'months' | 'years'
+  createdAt: string
+  updatedAt?: string
+  dismissedAt?: string
+  visited: number
+}
 
 const msgs = [
   {
@@ -27,7 +41,7 @@ const msgs = [
 const Index = () => {
   const [entries, setEntries] = useState([])
   const [entry, setEntry] = useState(null)
-  const [mode, setMode] = useState(MODES.VIEW)
+  const [mode, setMode] = useState(VIEW)
   const [isFilterActive, setIsFilterActive] = useState(true)
   const [searchText, setSearchText] = useState('')
 
@@ -36,8 +50,8 @@ const Index = () => {
   useEffect(() => {
     const handleKeydown = ({ keyCode }) => {
       if (keyCode === KEY_CODES.ESC) {
-        if (mode === MODES.EDIT) {
-          setMode(MODES.VIEW)
+        if (mode === EDIT) {
+          setMode(VIEW)
         } else if (document.activeElement === document.body) {
           setIsFilterActive(!isFilterActive)
         }
@@ -64,11 +78,11 @@ const Index = () => {
     return () => clearInterval(interval)
   }, [entries])
 
-  const handleEntiresChange = (entries) => {
-    const setVisibility = (entry) => {
+  const handleEntiresChange = (entries: Entry[]) => {
+    const setVisibility = (entry: Entry) => {
       let visible = true
-      let diff
-      let nextAvailableDate
+      let diff: number
+      let nextAvailableDate: DateTime
 
       if (entry.dismissedAt) {
         nextAvailableDate = DateTime.fromISO(entry.dismissedAt).plus({
@@ -93,7 +107,7 @@ const Index = () => {
     const orderedEntries = orderBy(
       entries.map(setVisibility),
       ['visible', 'diff', 'createdAt'],
-      ['desc', 'asc', 'asc']
+      ['desc', 'desc', 'asc']
     )
 
     setEntries(orderedEntries)
@@ -102,7 +116,7 @@ const Index = () => {
     )
   }
 
-  const handleEntryClick = (entry) => {
+  const handleEntryClick = (entry: Entry) => {
     setTimeout(() => {
       const nextEntries = entries.filter((x) => x.id !== entry.id)
       nextEntries.push({
@@ -117,17 +131,17 @@ const Index = () => {
 
   const handleViewFilterClick = () => setIsFilterActive(!isFilterActive)
 
-  const handeSaveEntry = (x) => {
-    handleEntiresChange([...entries.filter((y) => y.id !== x.id), x])
-    setMode(MODES.VIEW)
+  const handeSaveEntry = (entry: Entry) => {
+    handleEntiresChange([...entries.filter((x) => x.id !== entry.id), entry])
+    setMode(VIEW)
   }
 
-  const handleEditEntry = (entry) => {
+  const handleEditEntry = (entry: Entry) => {
     setEntry(entry)
-    setMode(MODES.EDIT)
+    setMode(EDIT)
   }
 
-  const handleDeleteEntry = (entry) => {
+  const handleDeleteEntry = (entry: Entry) => {
     const shouldDelete = global.confirm('Are you sure?')
 
     if (shouldDelete) {
@@ -139,7 +153,8 @@ const Index = () => {
 
   // TODO use ReactCSSTransitionGroup
   const visibleEntries = entries.filter((x) => {
-    const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const escapeRegExp = (str: string) =>
+      str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
     const regex = new RegExp(escapeRegExp(searchText), 'gi')
     const match =
       x.title.match(regex) || x.description.match(regex) || x.url.match(regex)
@@ -167,7 +182,7 @@ const Index = () => {
       />
 
       <main className={pageStyles.main}>
-        {mode === MODES.EDIT ? (
+        {mode === EDIT ? (
           <CreateEntryForm onSubmit={handeSaveEntry} {...entry} />
         ) : (
           <div className={styles.grid}>
@@ -232,7 +247,7 @@ const Index = () => {
         )}
       </main>
 
-      {mode === MODES.VIEW && (
+      {mode === VIEW && (
         <div
           className={styles.filter}
           onClick={handleViewFilterClick}

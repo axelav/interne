@@ -10,6 +10,7 @@ import { saveEntries, retrieveEntries } from '../services/storage'
 import { toTitleCase } from '../utils/formatters'
 import { name } from '../package.json'
 import { INTERVALS, KEY_CODES } from '../utils/constants'
+import { Entry } from './index'
 import pageStyles from '../styles/Pages.module.css'
 import formStyles from '../styles/Forms.module.css'
 
@@ -49,7 +50,7 @@ const Data = () => {
   }, [router])
 
   const handleSave = () => {
-    let result
+    let result: []
 
     try {
       result = JSON.parse(entries)
@@ -61,15 +62,15 @@ const Data = () => {
 
     setError('')
     saveEntries(
-      result.map((x) => {
+      result.map((x: Entry) => {
         if (!x.id) {
           x.id = uuidv4()
           x.visited = 0
           x.createdAt = new Date().toISOString()
           x.updatedAt = null
           x.dismissedAt = null
-          x.duration = !x.duration || '3'
-          x.interval = !x.interval || INTERVALS.DAYS
+          x.duration = !!x.duration ? x.duration : '3'
+          x.interval = !!x.interval ? x.interval : INTERVALS.DAYS
         }
 
         return omit(x, ['diff', 'visible', 'availableAt'])

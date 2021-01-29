@@ -1,22 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react'
-import PropTypes from 'prop-types'
 import Link from 'next/link'
 import { DateTime } from 'luxon'
 import { CSSTransition } from 'react-transition-group'
 import { Input } from './Forms'
 import { toTitleCase } from '../utils/formatters'
-import { MODES, KEY_CODES } from '../utils/constants'
+import { VIEW, EDIT, KEYS, Mode } from '../utils/constants'
 import { name } from '../package.json'
 import styles from '../styles/Header.module.css'
 
-const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
+const Header = ({
+  mode,
+  setMode,
+  setEntry,
+  searchText,
+  setSearchText,
+}: {
+  mode?: Mode
+  setMode?: (mode: Mode) => void
+  setEntry?: (entry: any) => void
+  searchText?: string
+  setSearchText?: (searchText: string) => void
+}) => {
   const [showSearch, setShowSearch] = useState(false)
   const [showDate, setShowDate] = useState(true)
   const inputRef = useRef(null)
 
   useEffect(() => {
-    const handleKeydown = (ev) => {
-      if (ev.keyCode === KEY_CODES.FWD_SLASH) {
+    const handleKeydown = (ev: KeyboardEvent) => {
+      if (ev.key === KEYS.FWD_SLASH) {
         if (document.activeElement === document.body) {
           setShowSearch(true)
           inputRef.current.focus()
@@ -26,7 +37,7 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
         }
       }
 
-      if (ev.keyCode === KEY_CODES.ESC) {
+      if (ev.key === KEYS.ESC) {
         if (
           !!inputRef.current &&
           inputRef.current.className === document.activeElement.className
@@ -73,18 +84,18 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
             setEntry(null)
 
             switch (mode) {
-              case MODES.EDIT:
-                setMode(MODES.VIEW)
+              case EDIT:
+                setMode(VIEW)
                 break
-              case MODES.VIEW:
-                setMode(MODES.EDIT)
+              case VIEW:
+                setMode(EDIT)
                 break
               default:
-                setMode(MODES.VIEW)
+                setMode(VIEW)
             }
           }}
         >
-          {mode === MODES.EDIT ? 'View Entires' : 'Add Entry'}
+          {mode === EDIT ? 'View Entires' : 'Add Entry'}
         </div>
       )}
 
@@ -131,14 +142,6 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
       </div>
     </header>
   )
-}
-
-Header.propTypes = {
-  mode: PropTypes.oneOf([MODES.VIEW, MODES.EDIT]).isRequired,
-  setMode: PropTypes.func.isRequired,
-  setEntry: PropTypes.func.isRequired,
-  searchText: PropTypes.string,
-  setSearchText: PropTypes.func.isRequired,
 }
 
 export default Header

@@ -1,4 +1,4 @@
-const toTitleCase = (str) =>
+const toTitleCase = (str: string): string =>
   str
     .split('_')
     .join(' ')
