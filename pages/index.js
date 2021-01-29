@@ -93,7 +93,7 @@ const Index = () => {
     const orderedEntries = orderBy(
       entries.map(setVisibility),
       ['visible', 'diff', 'createdAt'],
-      ['desc', 'asc', 'asc']
+      ['desc', 'desc', 'asc']
     )
 
     setEntries(orderedEntries)
