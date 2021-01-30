@@ -78,8 +78,10 @@ const Index = () => {
           return isFilterActive ? x.visible : true
         }
       }),
-      isFilterActive ? ['dismissedAtDiff'] : ['nextAvailableDiff'],
-      isFilterActive ? ['desc'] : ['asc']
+      isFilterActive
+        ? ['dismissedAtDiff']
+        : ['dismissedAtDiff', 'nextAvailableDiff'],
+      isFilterActive ? ['desc'] : ['desc', 'asc']
     )
 
     setVisibleEntries(nextEntries)
