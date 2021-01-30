@@ -78,9 +78,7 @@ const Index = () => {
           return isFilterActive ? x.visible : true
         }
       }),
-      isFilterActive
-        ? ['dismissedAtDiff']
-        : ['dismissedAtDiff', 'nextAvailableDiff'],
+      isFilterActive ? ['dismissedAt'] : ['dismissedAt', 'availableAt'],
       isFilterActive ? ['desc'] : ['desc', 'asc']
     )
 
@@ -95,43 +93,24 @@ const Index = () => {
   const handleEntriesChange = (entries) => {
     const setAdditionalProps = (entry) => {
       const now = DateTime.local()
-      const nextAvailableDate = entry.dismissedAt
+      const availableAt = entry.dismissedAt
         ? DateTime.fromISO(entry.dismissedAt).plus({
             [entry.interval]: entry.duration,
           })
         : now.minus(1, 'sec')
-      const nextAvailableDiff = nextAvailableDate.diffNow().toObject()
-        .milliseconds
-      const visible = nextAvailableDiff < 0
-      const dismissedAtDiff = entry.dismissedAt
-        ? DateTime.fromISO(entry.dismissedAt).diffNow().toObject().milliseconds
-        : 0
+      const visible = availableAt.diffNow().toObject().milliseconds < 0
 
       return {
         ...entry,
-        dismissedAtDiff,
-        nextAvailableDiff: !visible ? nextAvailableDiff : 0,
         visible,
-        availableAt:
-          nextAvailableDate && !visible
-            ? nextAvailableDate.toRelative()
-            : undefined,
+        availableAt,
       }
     }
 
     const result = entries.map(setAdditionalProps)
 
     setEntries(result)
-    saveEntries(
-      result.map((x) =>
-        omit(x, [
-          'dismissedAtDiff',
-          'nextAvailableDiff',
-          'visible',
-          'availableAt',
-        ])
-      )
-    )
+    saveEntries(result.map((x) => omit(x, ['visible', 'availableAt'])))
   }
 
   const handleEntryClick = (entry) => {
@@ -220,7 +199,9 @@ const Index = () => {
 
                   <div className={styles.flex}>
                     <div className={styles.availability}>
-                      {!x.visible && <span>Available {x.availableAt}</span>}
+                      {!x.visible && (
+                        <span>Available {x.availableAt.toRelative()}</span>
+                      )}
                     </div>
 
                     <div className={styles.controls}>
