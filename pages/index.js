@@ -31,6 +31,8 @@ const Index = () => {
   const [isFilterActive, setIsFilterActive] = useState(true)
   const [searchText, setSearchText] = useState('')
 
+  const [visibleEntries, setVisibleEntries] = useState([])
+
   const emptyListMsg = msgs[Math.floor(Math.random() * msgs.length)]
 
   useEffect(() => {
@@ -54,34 +56,59 @@ const Index = () => {
       const result = retrieveEntries()
 
       if (!!result && result.length > 0) {
-        handleEntiresChange(result)
+        handleEntriesChange(result)
       }
     }
   }, [entries])
 
   useEffect(() => {
-    const interval = setInterval(() => handleEntiresChange(entries), 1000 * 15)
+    // TODO use ReactCSSTransitionGroup
+    const nextEntries = orderBy(
+      entries.filter((x) => {
+        const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        const regex = new RegExp(escapeRegExp(searchText), 'gi')
+        const match =
+          x.title.match(regex) ||
+          x.description.match(regex) ||
+          x.url.match(regex)
+
+        if (searchText) {
+          return !!match
+        } else {
+          return isFilterActive ? x.visible : true
+        }
+      }),
+      isFilterActive ? ['dismissedAtDiff'] : ['nextAvailableDiff'],
+      isFilterActive ? ['desc'] : ['asc']
+    )
+
+    setVisibleEntries(nextEntries)
+  }, [entries, isFilterActive, searchText])
+
+  useEffect(() => {
+    const interval = setInterval(() => handleEntriesChange(entries), 1000 * 15)
     return () => clearInterval(interval)
   }, [entries])
 
-  const handleEntiresChange = (entries) => {
-    const setVisibility = (entry) => {
-      let visible = true
-      let diff
-      let nextAvailableDate
-
-      if (entry.dismissedAt) {
-        nextAvailableDate = DateTime.fromISO(entry.dismissedAt).plus({
-          [entry.interval]: entry.duration,
-        })
-        diff = nextAvailableDate.diffNow().toObject().milliseconds
-
-        visible = diff < 0
-      }
+  const handleEntriesChange = (entries) => {
+    const setAdditionalProps = (entry) => {
+      const now = DateTime.local()
+      const nextAvailableDate = entry.dismissedAt
+        ? DateTime.fromISO(entry.dismissedAt).plus({
+            [entry.interval]: entry.duration,
+          })
+        : now.minus(1, 'sec')
+      const nextAvailableDiff = nextAvailableDate.diffNow().toObject()
+        .milliseconds
+      const visible = nextAvailableDiff < 0
+      const dismissedAtDiff = entry.dismissedAt
+        ? DateTime.fromISO(entry.dismissedAt).diffNow().toObject().milliseconds
+        : 0
 
       return {
         ...entry,
-        diff,
+        dismissedAtDiff,
+        nextAvailableDiff: !visible ? nextAvailableDiff : 0,
         visible,
         availableAt:
           nextAvailableDate && !visible
@@ -90,15 +117,18 @@ const Index = () => {
       }
     }
 
-    const orderedEntries = orderBy(
-      entries.map(setVisibility),
-      ['visible', 'diff', 'createdAt'],
-      ['desc', 'desc', 'asc']
-    )
+    const result = entries.map(setAdditionalProps)
 
-    setEntries(orderedEntries)
+    setEntries(result)
     saveEntries(
-      orderedEntries.map((x) => omit(x, ['diff', 'visible', 'availableAt']))
+      result.map((x) =>
+        omit(x, [
+          'dismissedAtDiff',
+          'nextAvailableDiff',
+          'visible',
+          'availableAt',
+        ])
+      )
     )
   }
 
@@ -111,14 +141,14 @@ const Index = () => {
         dismissedAt: new Date().toISOString(),
       })
 
-      handleEntiresChange(nextEntries)
+      handleEntriesChange(nextEntries)
     }, 200)
   }
 
   const handleViewFilterClick = () => setIsFilterActive(!isFilterActive)
 
   const handeSaveEntry = (x) => {
-    handleEntiresChange([...entries.filter((y) => y.id !== x.id), x])
+    handleEntriesChange([...entries.filter((y) => y.id !== x.id), x])
     setMode(MODES.VIEW)
   }
 
@@ -133,23 +163,9 @@ const Index = () => {
     if (shouldDelete) {
       const nextEntries = entries.filter((x) => x.id !== entry.id)
 
-      handleEntiresChange(nextEntries)
+      handleEntriesChange(nextEntries)
     }
   }
-
-  // TODO use ReactCSSTransitionGroup
-  const visibleEntries = entries.filter((x) => {
-    const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-    const regex = new RegExp(escapeRegExp(searchText), 'gi')
-    const match =
-      x.title.match(regex) || x.description.match(regex) || x.url.match(regex)
-
-    if (searchText) {
-      return !!match
-    } else {
-      return isFilterActive ? x.visible : true
-    }
-  })
 
   return (
     <div className={pageStyles.container}>
