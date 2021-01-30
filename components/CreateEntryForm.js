@@ -37,7 +37,7 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
       setError('')
 
       const entry = {
-        url,
+        url: new URL(url).href,
         title,
         description,
         duration,
