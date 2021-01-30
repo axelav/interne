@@ -243,9 +243,9 @@ const Index = () => {
             ) : (
               <p
                 className={styles.empty}
-                title={!!searchText ? 'No results.' : emptyListMsg.en}
+                title={!!searchText ? 'Neniuj rezultoj' : emptyListMsg.eo}
               >
-                {!!searchText ? 'Neniuj rezultoj.' : emptyListMsg.eo}
+                {!!searchText ? 'No results' : emptyListMsg.en}
               </p>
             )}
           </div>
