@@ -77,15 +77,23 @@
   text-overflow: ellipsis;
 }
 
-.availability {
+.viewed {
   font-size: 0.875rem;
   margin-bottom: 0.5rem;
+}
+
+.flex {
+  display: flex;
+  justify-content: space-between;
+}
+
+.availability {
+  font-size: 0.875rem;
 }
 
 .controls {
   font-size: 0.875rem;
   display: flex;
-  justify-content: flex-end;
 }
 
 .edit,

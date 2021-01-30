@@ -199,18 +199,14 @@ const Index = () => {
                       : `${styles.card} ${styles.unavailable}`
                   }
                 >
-                  <div className={styles.availability}>
-                    {!x.visible ? (
-                      <span>Available {x.availableAt}</span>
-                    ) : (
-                      <span>
-                        {x.dismissedAt
-                          ? `Last viewed ${DateTime.fromISO(
-                              x.dismissedAt
-                            ).toRelative()}`
-                          : 'Never viewed'}
-                      </span>
-                    )}
+                  <div className={styles.viewed}>
+                    <span>
+                      {x.dismissedAt
+                        ? `Last viewed ${DateTime.fromISO(
+                            x.dismissedAt
+                          ).toRelative()}`
+                        : 'Never viewed'}
+                    </span>
                   </div>
                   <a
                     href={x.url}
@@ -222,18 +218,24 @@ const Index = () => {
                     <p title={x.description}>{x.description}</p>
                   </a>
 
-                  <div className={styles.controls}>
-                    <div
-                      className={styles.edit}
-                      onClick={() => handleEditEntry(x)}
-                    >
-                      Edit
+                  <div className={styles.flex}>
+                    <div className={styles.availability}>
+                      {!x.visible && <span>Available {x.availableAt}</span>}
                     </div>
-                    <div
-                      className={styles.delete}
-                      onClick={() => handleDeleteEntry(x)}
-                    >
-                      Delete
+
+                    <div className={styles.controls}>
+                      <div
+                        className={styles.edit}
+                        onClick={() => handleEditEntry(x)}
+                      >
+                        Edit
+                      </div>
+                      <div
+                        className={styles.delete}
+                        onClick={() => handleDeleteEntry(x)}
+                      >
+                        Delete
+                      </div>
                     </div>
                   </div>
                 </div>
