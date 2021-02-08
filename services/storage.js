@@ -1,4 +1,8 @@
+const LAST_VISIT = 'LAST_VISIT'
 const INTERIOR_ENTRIES = 'INTERIOR_ENTRIES'
+
+const saveLastVisit = (ts) => global.localStorage.setItem(LAST_VISIT, ts)
+const getLastVisit = () => global.localStorage.getItem(LAST_VISIT)
 
 const saveEntries = (entries) =>
   entries
@@ -8,4 +12,4 @@ const saveEntries = (entries) =>
 const retrieveEntries = () =>
   JSON.parse(global.localStorage.getItem(INTERIOR_ENTRIES))
 
-export { saveEntries, retrieveEntries }
+export { saveEntries, retrieveEntries, saveLastVisit, getLastVisit }

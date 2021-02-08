@@ -4,9 +4,15 @@ import orderBy from 'lodash.orderby'
 import omit from 'lodash.omit'
 import { DateTime } from 'luxon'
 import CreateEntryForm from '../components/CreateEntryForm'
+import About from '../components/About'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
-import { saveEntries, retrieveEntries } from '../services/storage'
+import {
+  saveEntries,
+  retrieveEntries,
+  saveLastVisit,
+  getLastVisit,
+} from '../services/storage'
 import { toTitleCase } from '../utils/formatters'
 import { MODES, KEY_CODES } from '../utils/constants'
 import { name } from '../package.json'
@@ -30,6 +36,7 @@ const Index = () => {
   const [mode, setMode] = useState(MODES.VIEW)
   const [isFilterActive, setIsFilterActive] = useState(true)
   const [searchText, setSearchText] = useState('')
+  const [lastVisit, setLastVisit] = useState()
 
   const [visibleEntries, setVisibleEntries] = useState([])
 
@@ -60,6 +67,16 @@ const Index = () => {
       }
     }
   }, [entries])
+
+  useEffect(() => {
+    const lastVisit = getLastVisit()
+
+    if (lastVisit) {
+      setLastVisit(lastVisit)
+    }
+
+    saveLastVisit(DateTime.local().toISO())
+  }, [])
 
   useEffect(() => {
     // TODO use ReactCSSTransitionGroup
@@ -221,13 +238,19 @@ const Index = () => {
                   </div>
                 </div>
               ))
-            ) : (
+            ) : entries.length > 0 ? (
               <p
                 className={styles.empty}
-                title={!!searchText ? 'Neniuj rezultoj' : emptyListMsg.eo}
+                title={
+                  entries.length > 0 && !!searchText
+                    ? 'Neniuj rezultoj'
+                    : emptyListMsg.eo
+                }
               >
                 {!!searchText ? 'No results' : emptyListMsg.en}
               </p>
+            ) : (
+              <About />
             )}
           </div>
         )}
