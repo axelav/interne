@@ -11,15 +11,18 @@
     "deploy:prod": "now --prod && now alias set https://interne.vercel.app interne.honkytonk.in"
   },
   "dependencies": {
+    "autoprefixer": "^10.2.4",
     "lodash.omit": "^4.5.0",
     "lodash.orderby": "^4.6.0",
     "luxon": "^1.24.1",
     "next": "^10.0.0",
     "next-offline": "^5.0.3",
+    "postcss": "^8.2.4",
     "prop-types": "^15.7.2",
     "react": "^17.0.1",
     "react-dom": "^17.0.1",
     "react-transition-group": "^4.4.1",
+    "tailwindcss": "^2.0.2",
     "uuid": "^8.3.1"
   },
   "devDependencies": {
