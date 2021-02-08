@@ -24,6 +24,8 @@ const msgs = [
   },
 ]
 
+const emptyListMsg = msgs[Math.floor(Math.random() * msgs.length)]
+
 const Index = () => {
   const [entries, setEntries] = useState([])
   const [entry, setEntry] = useState(null)
@@ -32,8 +34,6 @@ const Index = () => {
   const [searchText, setSearchText] = useState('')
 
   const [visibleEntries, setVisibleEntries] = useState([])
-
-  const emptyListMsg = msgs[Math.floor(Math.random() * msgs.length)]
 
   useEffect(() => {
     const handleKeydown = ({ keyCode }) => {
