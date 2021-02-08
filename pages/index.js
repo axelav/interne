@@ -13,6 +13,8 @@ import { name } from '../package.json'
 import pageStyles from '../styles/Pages.module.css'
 import styles from '../styles/Index.module.css'
 
+import generateHash from '../services/sync'
+
 const msgs = [
   {
     en: 'Read a book!',
@@ -23,6 +25,11 @@ const msgs = [
     eo: 'Iru eksteren!',
   },
 ]
+
+console.log('Hashing...')
+console.log(generateHash(msgs[0].en))
+console.log(generateHash(msgs[1].en))
+console.log('End hashing.')
 
 const Index = () => {
   const [entries, setEntries] = useState([])

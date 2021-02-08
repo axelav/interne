@@ -11,6 +11,7 @@
     "deploy:prod": "now --prod && now alias set https://interne.vercel.app interne.honkytonk.in"
   },
   "dependencies": {
+    "crypto-js": "^4.0.0",
     "lodash.omit": "^4.5.0",
     "lodash.orderby": "^4.6.0",
     "luxon": "^1.24.1",
