@@ -51,6 +51,7 @@
 .unavailable:hover,
 .unavailable:focus {
   background: #fff;
+  opacity: 70%;
 }
 
 .card:active {
