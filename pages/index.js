@@ -7,6 +7,7 @@ import CreateEntryForm from '../components/CreateEntryForm'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 import { saveEntries, retrieveEntries } from '../services/storage'
+import { getAvailableAtPlusEntropy } from '../utils/entropy'
 import { toTitleCase } from '../utils/formatters'
 import { MODES, KEY_CODES } from '../utils/constants'
 import { name } from '../package.json'
@@ -92,13 +93,8 @@ const Index = () => {
 
   const handleEntriesChange = (entries) => {
     const setAdditionalProps = (entry) => {
-      const now = DateTime.local()
-      const availableAt = entry.dismissedAt
-        ? DateTime.fromISO(entry.dismissedAt).plus({
-            [entry.interval]: entry.duration,
-          })
-        : now.minus(1, 'sec')
-      const visible = availableAt.diffNow().toObject().milliseconds < 0
+      const { availableAt, diff } = getAvailableAtPlusEntropy(entry)
+      const visible = diff < 0
 
       return {
         ...entry,
