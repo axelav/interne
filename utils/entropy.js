@@ -11,9 +11,10 @@ const opts = {
 const getAvailableAtPlusEntropy = ({ dismissedAt, interval, duration }) => {
   const { entropy } = opts
 
-  const availableAt = (
-    DateTime.fromISO(dismissedAt) || DateTime.local().minus(1, 'sec')
-  ).plus({ [interval]: duration })
+  const dismissedAtDate = dismissedAt
+    ? DateTime.fromISO(dismissedAt)
+    : DateTime.local().minus(1, 'sec')
+  const availableAt = dismissedAtDate.plus({ [interval]: duration })
   const diff = availableAt.diffNow().toObject().milliseconds
 
   if (entropy && diff > MILLIS_IN_DAY) {
