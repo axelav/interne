@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react'
 import Head from 'next/head'
 import orderBy from 'lodash.orderby'
 import omit from 'lodash.omit'
-import { DateTime } from 'luxon'
 import CreateEntryForm from '../components/CreateEntryForm'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
 import { saveEntries, retrieveEntries } from '../services/storage'
 import { getAvailableAtPlusEntropy } from '../utils/entropy'
+import { getRelativeTimeFromNow } from '../utils/date'
 import { toTitleCase } from '../utils/formatters'
 import { MODES, KEY_CODES } from '../utils/constants'
 import { name } from '../package.json'
@@ -177,9 +177,7 @@ const Index = () => {
                   <div className={styles.viewed}>
                     <span>
                       {x.dismissedAt
-                        ? `Last viewed ${DateTime.fromISO(
-                            x.dismissedAt
-                          ).toRelative()}`
+                        ? `Last viewed ${getRelativeTimeFromNow(x.dismissedAt)}`
                         : 'Never viewed'}
                     </span>
                   </div>
@@ -196,7 +194,9 @@ const Index = () => {
                   <div className={styles.flex}>
                     <div className={styles.availability}>
                       {!x.visible && (
-                        <span>Available {x.availableAt.toRelative()}</span>
+                        <span>
+                          Available {getRelativeTimeFromNow(x.availableAt)}
+                        </span>
                       )}
                     </div>
 

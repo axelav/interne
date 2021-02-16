@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react'
 import PropTypes from 'prop-types'
 import Link from 'next/link'
-import { DateTime } from 'luxon'
 import { CSSTransition } from 'react-transition-group'
 import { Input } from './Forms'
+import { getCurrentDateLocalized } from '../utils/date'
 import { toTitleCase } from '../utils/formatters'
 import { MODES, KEY_CODES } from '../utils/constants'
 import { name } from '../package.json'
@@ -126,7 +126,7 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
           onEnter={() => setShowSearch(false)}
           onExited={() => setShowSearch(true)}
         >
-          <div>{DateTime.local().toLocaleString(DateTime.DATE_MED)}</div>
+          <div>{getCurrentDateLocalized()}</div>
         </CSSTransition>
       </div>
     </header>
