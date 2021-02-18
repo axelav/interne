@@ -12,11 +12,10 @@ const getAvailableAtPlusEntropy = ({ dismissedAt, interval, duration }) => {
   const now = getCurrentDate()
   const { entropy } = opts
 
-  const dismissedAtDate = dismissedAt
-    ? getDate(dismissedAt)
+  const availableAt = dismissedAt
+    ? getDate(dismissedAt).add(duration, interval)
     : now.subtract(1, 'seconds')
 
-  const availableAt = dismissedAtDate.add(duration, interval)
   const diff = availableAt.diff(now)
 
   if (entropy && diff > MILLIS_IN_DAY) {
