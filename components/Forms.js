@@ -1,5 +1,6 @@
 import React, { forwardRef, useRef, useImperativeHandle } from 'react'
 import PropTypes from 'prop-types'
+import { useButton } from '@react-aria/button'
 import styles from '../styles/Forms.module.css'
 
 const Form = ({ children }) => {
@@ -46,23 +47,26 @@ Input.defaultProps = {
   type: 'text',
 }
 
-const Button = ({ label, onClick }) => {
+const Button = (props) => {
+  const ref = useRef()
+  const { buttonProps } = useButton(props, ref)
+  const { children } = props
+
   return (
     <div className={styles['button-container']}>
-      <button className={styles.button} type="button" onClick={onClick}>
-        {label}
+      <button {...buttonProps} ref={ref} className={styles.button}>
+        {children}
       </button>
     </div>
   )
 }
 
 Button.propTypes = {
-  label: PropTypes.string.isRequired,
-  onClick: PropTypes.func.isRequired,
+  children: PropTypes.node.isRequired,
 }
 
 Button.defaultProps = {
-  label: 'Submit',
+  children: 'Submit',
 }
 
 const Select = ({ label, value, options, onChange }) => {

@@ -93,7 +93,9 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
       <Button
         label={props.id ? 'Edit Entry' : 'Add Entry'}
         onClick={handleSubmit}
-      />
+      >
+        {props.id ? 'Edit Entry' : 'Add Entry'}
+      </Button>
     </Form>
   )
 }
