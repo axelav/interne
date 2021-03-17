@@ -8,7 +8,7 @@ import omit from 'lodash.omit'
 import { Form, Textarea, Button } from '../components/Forms'
 import { saveEntries, retrieveEntries } from '../services/storage'
 import { toTitleCase } from '../utils/formatters'
-import package from '../package.json'
+import packageData from '../package.json'
 import { INTERVALS, KEY_CODES } from '../utils/constants'
 import pageStyles from '../styles/Pages.module.css'
 import formStyles from '../styles/Forms.module.css'
@@ -82,7 +82,7 @@ const Data = () => {
   return (
     <div className={pageStyles.container}>
       <Head>
-        <title>Data — {toTitleCase(package.name)}</title>
+        <title>Data — {toTitleCase(packageData.name)}</title>
         <link rel="icon" href="/favicon.ico" />
       </Head>
 

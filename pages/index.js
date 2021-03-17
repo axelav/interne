@@ -10,7 +10,7 @@ import { getAvailableAtPlusEntropy } from '../utils/entropy'
 import { getRelativeTimeFromNow } from '../utils/date'
 import { toTitleCase } from '../utils/formatters'
 import { MODES, KEY_CODES } from '../utils/constants'
-import package from '../package.json'
+import packageData from '../package.json'
 import pageStyles from '../styles/Pages.module.css'
 import styles from '../styles/Index.module.css'
 
@@ -147,7 +147,7 @@ const Index = () => {
   return (
     <div className={pageStyles.container}>
       <Head>
-        <title>{toTitleCase(package.name)}</title>
+        <title>{toTitleCase(packageData.name)}</title>
         <link rel="icon" href="/favicon.ico" />
       </Head>
 

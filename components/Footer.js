@@ -1,11 +1,11 @@
 import React from 'react'
 import Link from 'next/link'
-import package from '../package.json'
+import packageData from '../package.json'
 import styles from '../styles/Footer.module.css'
 
 const Footer = () => (
   <footer className={styles.footer}>
-    <div>v{package.version}</div>
+    <div>v{packageData.version}</div>
     <Link href="/data">
       <a>Import/Export Data</a>
     </Link>
