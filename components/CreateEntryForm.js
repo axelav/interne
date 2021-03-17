@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import PropTypes from 'prop-types'
 import { v4 as uuidv4 } from 'uuid'
 import { Form, Input, Select, Button } from './Forms'
@@ -23,6 +23,12 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
   const [duration, setDuration] = useState(props.duration || '3')
   const [interval, setInterval] = useState(props.interval || INTERVALS.DAYS)
   const [error, setError] = useState('')
+
+  const urlInputRef = useRef(null)
+
+  useEffect(() => {
+    urlInputRef.current.focus()
+  }, [])
 
   const handleSubmit = () => {
     if (!url || !title) {
@@ -63,6 +69,7 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
     <Form>
       {!!error && <div className={styles.error}>{error}</div>}
       <Input
+        ref={urlInputRef}
         value={url}
         label="URL"
         placeholder="http://example.com"
