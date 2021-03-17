@@ -6,7 +6,7 @@ import { Input } from './Forms'
 import { getCurrentDateLocalized } from '../utils/date'
 import { toTitleCase } from '../utils/formatters'
 import { MODES, KEY_CODES } from '../utils/constants'
-import { name } from '../package.json'
+import package from '../package.json'
 import styles from '../styles/Header.module.css'
 
 const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
@@ -62,7 +62,7 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
     <header className={styles.header}>
       <h1 className={styles.title}>
         <Link href="/">
-          <a>{toTitleCase(name)}</a>
+          <a>{toTitleCase(package.name)}</a>
         </Link>
       </h1>
 
