@@ -187,11 +187,14 @@ const Index = () => {
                     rel="noopener noreferrer"
                     onClick={() => handleEntryClick(x)}
                   >
-                    <h2 title={x.title}>{x.title} &rarr;</h2>
+                    <div className={styles.title}>
+                      <h2 title={x.title}>{x.title}</h2>
+                      <div className={styles.rarr}>&rarr;</div>
+                    </div>
                     <p title={x.description}>{x.description}</p>
                   </a>
 
-                  <div className={styles.flex}>
+                  <div className={styles['flex-between']}>
                     <div className={styles.availability}>
                       {!x.visible && (
                         <span>
