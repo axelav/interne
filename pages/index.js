@@ -86,11 +86,6 @@ const Index = () => {
     setVisibleEntries(nextEntries)
   }, [entries, isFilterActive, searchText])
 
-  useEffect(() => {
-    const interval = setInterval(() => handleEntriesChange(entries), 1000 * 15)
-    return () => clearInterval(interval)
-  }, [entries])
-
   const handleEntriesChange = (entries) => {
     const setAdditionalProps = (entry) => {
       const { availableAt, diff } = getAvailableAtPlusEntropy(entry)
