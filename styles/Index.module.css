@@ -106,11 +106,13 @@
   display: flex;
 }
 
+.ignore,
 .edit,
 .delete {
   cursor: pointer;
 }
 
+.ignore,
 .edit {
   margin-right: 0.5rem;
 }

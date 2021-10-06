@@ -199,6 +199,14 @@ const Index = () => {
                     </div>
 
                     <div className={styles.controls}>
+                      {x.visible && (
+                        <div
+                          className={styles.ignore}
+                          onClick={() => handleEntryClick(x)}
+                        >
+                          Mark Read
+                        </div>
+                      )}
                       <div
                         className={styles.edit}
                         onClick={() => handleEditEntry(x)}
