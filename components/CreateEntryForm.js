@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import PropTypes from 'prop-types'
 import { v4 as uuidv4 } from 'uuid'
 import { Form, Input, Select, Button } from './Forms'
 import { toTitleCase } from '../utils/formatters'
 import { INTERVALS } from '../utils/constants'
+import { KEY_CODES } from '../utils/constants'
 import styles from '../styles/Forms.module.css'
 
 const isValidUrl = (str) => {
@@ -30,7 +31,7 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
     urlInputRef.current.focus()
   }, [])
 
-  const handleSubmit = () => {
+  const handleSubmit = useCallback(() => {
     if (!url || !title) {
       setError('URL and Title are required.')
     } else if (!isValidUrl(url)) {
@@ -63,7 +64,19 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
       setDuration(3)
       setInterval(INTERVALS.DAYS)
     }
-  }
+  })
+
+  useEffect(() => {
+    const handleKeydown = ({ keyCode }) => {
+      if (keyCode === KEY_CODES.ENTER) {
+        handleSubmit()
+      }
+    }
+
+    document.addEventListener('keydown', handleKeydown)
+
+    return () => document.removeEventListener('keydown', handleKeydown)
+  }, [handleSubmit])
 
   return (
     <Form>

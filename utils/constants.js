@@ -14,6 +14,7 @@ const MODES = {
 const KEY_CODES = {
   ESC: 27,
   FWD_SLASH: 191,
+  ENTER: 13,
 }
 
 export { INTERVALS, MODES, KEY_CODES }

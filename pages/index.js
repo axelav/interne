@@ -33,7 +33,6 @@ const Index = () => {
   const [mode, setMode] = useState(MODES.VIEW)
   const [isFilterActive, setIsFilterActive] = useState(true)
   const [searchText, setSearchText] = useState('')
-
   const [visibleEntries, setVisibleEntries] = useState([])
 
   useEffect(() => {
