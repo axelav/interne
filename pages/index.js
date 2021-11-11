@@ -155,7 +155,11 @@ const Index = () => {
 
       <main className={pageStyles.main}>
         {mode === MODES.EDIT ? (
-          <CreateEntryForm onSubmit={handeSaveEntry} {...entry} />
+          <CreateEntryForm
+            onSubmit={handeSaveEntry}
+            entries={entries}
+            {...entry}
+          />
         ) : (
           <div className={styles.grid}>
             {visibleEntries.length > 0 ? (

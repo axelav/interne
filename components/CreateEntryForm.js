@@ -17,7 +17,7 @@ const isValidUrl = (str) => {
   return true
 }
 
-const CreateEntryForm = ({ onSubmit, ...props }) => {
+const CreateEntryForm = ({ onSubmit, entries, ...props }) => {
   const [url, setUrl] = useState(props.url || '')
   const [title, setTitle] = useState(props.title || '')
   const [description, setDescription] = useState(props.description || '')
@@ -34,6 +34,11 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
   const handleSubmit = useCallback(() => {
     if (!url || !title) {
       setError('URL and Title are required.')
+    } else if (
+      !props.id &&
+      entries.map((x) => new URL(x.url).href).includes(new URL(url).href)
+    ) {
+      setError('URL already exists.')
     } else if (!isValidUrl(url)) {
       setError('URL is invalid.')
     } else if (!duration) {
@@ -64,7 +69,17 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
       setDuration(3)
       setInterval(INTERVALS.DAYS)
     }
-  })
+  }, [
+    description,
+    duration,
+    interval,
+    title,
+    url,
+    onSubmit,
+    props.id,
+    props.createdAt,
+    props.dismissedAt,
+  ])
 
   useEffect(() => {
     const handleKeydown = ({ keyCode }) => {
@@ -122,6 +137,7 @@ const CreateEntryForm = ({ onSubmit, ...props }) => {
 
 CreateEntryForm.propTypes = {
   onSubmit: PropTypes.func.isRequired,
+  entries: PropTypes.arrayOf(PropTypes.object).isRequired,
   id: PropTypes.string,
   url: PropTypes.string,
   title: PropTypes.string,
