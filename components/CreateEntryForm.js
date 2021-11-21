@@ -113,6 +113,7 @@ const CreateEntryForm = ({ onSubmit, entries, ...props }) => {
       />
       <Input
         type="number"
+        pattern="[0-9]*"
         value={duration}
         label="Duration"
         onChange={setDuration}
