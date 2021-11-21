@@ -70,6 +70,7 @@ const CreateEntryForm = ({ onSubmit, entries, ...props }) => {
       setInterval(INTERVALS.DAYS)
     }
   }, [
+    entries,
     description,
     duration,
     interval,
@@ -97,6 +98,7 @@ const CreateEntryForm = ({ onSubmit, entries, ...props }) => {
     <Form>
       {!!error && <div className={styles.error}>{error}</div>}
       <Input
+        type="url"
         ref={urlInputRef}
         value={url}
         label="URL"
