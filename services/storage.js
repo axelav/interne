@@ -1,4 +1,5 @@
 const INTERIOR_ENTRIES = 'INTERIOR_ENTRIES'
+const SCROLL_POSITION = 'scrollY'
 
 const saveEntries = (entries) =>
   entries
@@ -8,4 +9,9 @@ const saveEntries = (entries) =>
 const retrieveEntries = () =>
   JSON.parse(global.localStorage.getItem(INTERIOR_ENTRIES))
 
-export { saveEntries, retrieveEntries }
+const saveScrollY = (scrollY) => {
+  global.localStorage.setItem(SCROLL_POSITION, scrollY || window.scrollY)
+}
+const retrieveScrollY = () => global.localStorage.getItem(SCROLL_POSITION)
+
+export { saveEntries, retrieveEntries, saveScrollY, retrieveScrollY }

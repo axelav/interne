@@ -5,7 +5,12 @@ import omit from 'lodash.omit'
 import CreateEntryForm from '../components/CreateEntryForm'
 import Header from '../components/Header'
 import Footer from '../components/Footer'
-import { saveEntries, retrieveEntries } from '../services/storage'
+import {
+  saveEntries,
+  retrieveEntries,
+  saveScrollY,
+  retrieveScrollY,
+} from '../services/storage'
 import { getAvailableAtPlusEntropy } from '../utils/entropy'
 import { getRelativeTimeFromNow } from '../utils/date'
 import { toTitleCase } from '../utils/formatters'
@@ -50,6 +55,20 @@ const Index = () => {
 
     return () => document.removeEventListener('keydown', handleKeydown)
   }, [isFilterActive, mode, searchText])
+
+  useEffect(() => {
+    const handleScrollTo = () => {
+      const scrollY = retrieveScrollY()
+
+      if (scrollY) {
+        window.scrollTo(0, scrollY)
+      }
+    }
+
+    if (mode === MODES.VIEW) {
+      handleScrollTo()
+    }
+  }, [mode])
 
   useEffect(() => {
     if (entries.length < 1) {
@@ -119,6 +138,10 @@ const Index = () => {
   const handleViewFilterClick = () => setIsFilterActive(!isFilterActive)
 
   const handeSaveEntry = (x) => {
+    if (!x.updatedAt) {
+      saveScrollY(0)
+    }
+
     handleEntriesChange([...entries.filter((y) => y.id !== x.id), x])
     setMode(MODES.VIEW)
   }
@@ -126,6 +149,9 @@ const Index = () => {
   const handleEditEntry = (entry) => {
     setEntry(entry)
     setMode(MODES.EDIT)
+    saveScrollY()
+
+    window.scrollTo(0, 0)
   }
 
   const handleDeleteEntry = (entry) => {
