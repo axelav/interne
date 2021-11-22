@@ -10,6 +10,7 @@ import {
   retrieveEntries,
   saveScrollY,
   retrieveScrollY,
+  removeScrollY,
 } from '../services/storage'
 import { getAvailableAtPlusEntropy } from '../utils/entropy'
 import { getRelativeTimeFromNow } from '../utils/date'
@@ -55,6 +56,13 @@ const Index = () => {
 
     return () => document.removeEventListener('keydown', handleKeydown)
   }, [isFilterActive, mode, searchText])
+
+  useEffect(() => {
+    removeScrollY()
+    document.addEventListener('DOMContentLoaded', () => {
+      window.scrollTo(0, 0)
+    })
+  }, [])
 
   useEffect(() => {
     const handleScrollTo = () => {

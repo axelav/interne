@@ -13,5 +13,12 @@ const saveScrollY = (scrollY) => {
   global.localStorage.setItem(SCROLL_POSITION, scrollY || window.scrollY)
 }
 const retrieveScrollY = () => global.localStorage.getItem(SCROLL_POSITION)
+const removeScrollY = () => global.localStorage.removeItem(SCROLL_POSITION)
 
-export { saveEntries, retrieveEntries, saveScrollY, retrieveScrollY }
+export {
+  saveEntries,
+  retrieveEntries,
+  saveScrollY,
+  retrieveScrollY,
+  removeScrollY,
+}
