@@ -48,6 +48,8 @@ const CreateEntryForm = ({ onSubmit, entries, ...props }) => {
     } else {
       setError('')
 
+      const now = new Date()
+
       const entry = {
         url: new URL(url).href,
         title,
@@ -56,8 +58,8 @@ const CreateEntryForm = ({ onSubmit, entries, ...props }) => {
         interval,
         visited: 0,
         id: props.id || uuidv4(),
-        createdAt: props.createdAt || new Date().toISOString(),
-        updatedAt: props.createdAt ? new Date().toISOString() : null,
+        createdAt: props.createdAt || now.toISOString(),
+        updatedAt: props.createdAt ? now.toISOString() : null,
         dismissedAt: props.dismissedAt || null,
       }
 
