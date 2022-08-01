@@ -19,10 +19,11 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
       if (ev.keyCode === KEY_CODES.FWD_SLASH) {
         if (document.activeElement === document.body) {
           setShowSearch(true)
-          inputRef.current.focus()
+          inputRef.current?.focus()
 
           // prevent `/` character from being used as input value
           ev.preventDefault()
+          ev.stopPropagation()
         }
       }
 
