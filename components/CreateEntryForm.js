@@ -105,20 +105,24 @@ const CreateEntryForm = ({ onSubmit, entries, ...props }) => {
         value={url}
         label="URL"
         placeholder="http://example.com"
-        onChange={setUrl}
+        onChange={(evt) => setUrl(evt.currentTarget.value)}
       />
-      <Input value={title} label="Title" onChange={setTitle} />
+      <Input
+        value={title}
+        label="Title"
+        onChange={(evt) => setTitle(evt.currentTarget.value)}
+      />
       <Input
         value={description}
         label="Description"
-        onChange={setDescription}
+        onChange={(evt) => setDescription(evt.currentTarget.value)}
       />
       <Input
         type="number"
         pattern="[0-9]*"
         value={duration}
         label="Duration"
-        onChange={setDuration}
+        onChange={(evt) => setDuration(evt.currentTarget.value)}
         min={1}
       />
       <Select

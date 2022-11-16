@@ -20,6 +20,10 @@ import packageData from '../package.json'
 import pageStyles from '../styles/Pages.module.css'
 import styles from '../styles/Index.module.css'
 
+const syncEntires = async (entries) => {
+  const res = await fetch('/api/sync')
+}
+
 const msgs = [
   {
     en: 'Read a book!',
@@ -62,6 +66,15 @@ const Index = () => {
     document.addEventListener('DOMContentLoaded', () => {
       window.scrollTo(0, 0)
     })
+
+    // window.onbeforeunload = () =>
+    //   global.localStorage.setItem(SCROLL_POSITION, window.scrollY)
+
+    // return () => {
+    //   debugger
+    //   global.localStorage.removeItem(SCROLL_POSITION)
+    //   document.removeEventListener('DOMContentLoaded', handleScrollTo)
+    // }
   }, [])
 
   useEffect(() => {
@@ -105,6 +118,7 @@ const Index = () => {
           return isFilterActive ? x.visible : true
         }
       }),
+      // TODO adjust sorting?
       isFilterActive ? ['dismissedAt'] : ['dismissedAt', 'availableAt'],
       isFilterActive ? ['desc'] : ['desc', 'asc']
     )
@@ -127,7 +141,10 @@ const Index = () => {
     const result = entries.map(setAdditionalProps)
 
     setEntries(result)
-    saveEntries(result.map((x) => omit(x, ['visible', 'availableAt'])))
+
+    const dbEntries = result.map((x) => omit(x, ['visible', 'availableAt']))
+    saveEntries(dbEntries)
+    syncEntires(dbEntries)
   }
 
   const handleEntryClick = (entry) => {

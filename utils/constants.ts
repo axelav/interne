@@ -11,6 +11,11 @@ const MODES = {
   EDIT: 'edit',
 }
 
+export enum Modes {
+  View,
+  Edit,
+}
+
 const KEY_CODES = {
   ESC: 27,
   FWD_SLASH: 191,

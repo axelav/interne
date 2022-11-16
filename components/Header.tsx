@@ -1,32 +1,46 @@
-import React, { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect, SyntheticEvent } from 'react'
 import PropTypes from 'prop-types'
 import Link from 'next/link'
 import { CSSTransition } from 'react-transition-group'
 import { Input } from './Forms'
 import { getCurrentDateLocalized } from '../utils/date'
 import { toTitleCase } from '../utils/formatters'
-import { MODES, KEY_CODES } from '../utils/constants'
+import { MODES, KEY_CODES, Modes } from '../utils/constants'
 import packageData from '../package.json'
 import styles from '../styles/Header.module.css'
 
-const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
+interface Props {
+  mode: Modes
+  searchText?: string
+  setMode: React.Dispatch<React.SetStateAction<Modes>>
+  setEntry: React.Dispatch<React.SetStateAction<string>>
+  setSearchText: React.Dispatch<React.SetStateAction<string>>
+}
+
+const Header = ({
+  mode,
+  setMode,
+  setEntry,
+  searchText,
+  setSearchText,
+}: Props) => {
   const [showSearch, setShowSearch] = useState(false)
   const [showDate, setShowDate] = useState(true)
   const inputRef = useRef(null)
 
   useEffect(() => {
-    const handleKeydown = (ev) => {
-      if (ev.keyCode === KEY_CODES.FWD_SLASH) {
+    const handleKeydown = (evt: KeyboardEvent) => {
+      if (evt.keyCode === KEY_CODES.FWD_SLASH) {
         if (document.activeElement === document.body) {
           setShowSearch(true)
           inputRef.current.focus()
 
           // prevent `/` character from being used as input value
-          ev.preventDefault()
+          evt.preventDefault()
         }
       }
 
-      if (ev.keyCode === KEY_CODES.ESC) {
+      if (evt.keyCode === KEY_CODES.ESC) {
         if (
           !!inputRef.current &&
           inputRef.current.className === document.activeElement.className
@@ -66,25 +80,31 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
         </Link>
       </h1>
 
-      {!!mode && (
+      {mode && (
         <div
           className={styles.mode}
           onClick={() => {
             setEntry(null)
 
-            switch (mode) {
-              case MODES.EDIT:
-                setMode(MODES.VIEW)
-                break
-              case MODES.VIEW:
-                setMode(MODES.EDIT)
-                break
-              default:
-                setMode(MODES.VIEW)
+            if (mode === Modes.Edit) {
+              setMode(Modes.View)
+            } else {
+              setMode(Modes.Edit)
             }
+
+            // switch (mode) {
+            //   case Modes.Edit:
+            //     setMode(Modes.View)
+            //     break
+            //   case Modes.View:
+            //     setMode(Modes.Edit)
+            //     break
+            //   default:
+            //     setMode(Modes.View)
+            // }
           }}
         >
-          {mode === MODES.EDIT ? 'View Entires' : 'Add Entry'}
+          {mode === Modes.Edit ? 'View Entires' : 'Add Entry'}
         </div>
       )}
 
@@ -112,7 +132,7 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
             <Input
               ref={inputRef}
               value={searchText}
-              onChange={setSearchText}
+              onChange={(evt) => setSearchText(evt.currentTarget.value)}
               placeholder="Search"
             />
           </div>
@@ -131,14 +151,6 @@ const Header = ({ mode, setMode, setEntry, searchText, setSearchText }) => {
       </div>
     </header>
   )
-}
-
-Header.propTypes = {
-  mode: PropTypes.oneOf([MODES.VIEW, MODES.EDIT]).isRequired,
-  setMode: PropTypes.func.isRequired,
-  setEntry: PropTypes.func.isRequired,
-  searchText: PropTypes.string,
-  setSearchText: PropTypes.func.isRequired,
 }
 
 export default Header
