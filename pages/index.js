@@ -108,7 +108,7 @@ const Index = () => {
           return isFilterActive ? x.visible : true
         }
       }),
-      isFilterActive ? ['dismissedAt'] : ['availableAt', 'dismissedAt'],
+      isFilterActive ? ['dismissedAt'] : ['dismissedAt', 'availableAt'],
       isFilterActive ? ['desc'] : ['desc', 'asc']
     )
 
