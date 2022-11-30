@@ -1,4 +1,4 @@
-const withOffline = require('next-offline')
+// const withOffline = require('next-offline')
 
 const nextConfig = {
   poweredByHeader: false,
@@ -27,6 +27,11 @@ const nextConfig = {
       },
     ],
   },
+  experimental: {
+    esmExternals: false,
+  },
 }
 
-module.exports = withOffline(nextConfig)
+// TODO: re-enable?
+// module.exports = withOffline(nextConfig)
+module.exports = nextConfig

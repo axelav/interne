@@ -95,9 +95,9 @@ const Index = () => {
         const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
         const regex = new RegExp(escapeRegExp(searchText), 'gi')
         const match =
-          x.title.match(regex) ||
-          x.description.match(regex) ||
-          x.url.match(regex)
+          x.title?.match(regex) ||
+          x.description?.match(regex) ||
+          x.url?.match(regex)
 
         if (searchText) {
           return !!match
@@ -111,6 +111,12 @@ const Index = () => {
 
     setVisibleEntries(nextEntries)
   }, [entries, isFilterActive, searchText])
+
+  useEffect(() => {
+    const interval = setInterval(() => handleEntriesChange(entries), 1000 * 60)
+
+    return () => clearInterval(interval)
+  }, [entries])
 
   const handleEntriesChange = (entries) => {
     const setAdditionalProps = (entry) => {

@@ -22,7 +22,7 @@ const CreateEntryForm = ({ onSubmit, entries, ...props }) => {
   const [title, setTitle] = useState(props.title || '')
   const [description, setDescription] = useState(props.description || '')
   const [duration, setDuration] = useState(props.duration || '3')
-  const [interval, setInterval] = useState(props.interval || INTERVALS.DAYS)
+  const [interval, setWaitInterval] = useState(props.interval || INTERVALS.DAYS)
   const [error, setError] = useState('')
 
   const urlInputRef = useRef(null)
@@ -69,7 +69,7 @@ const CreateEntryForm = ({ onSubmit, entries, ...props }) => {
       setTitle('')
       setDescription('')
       setDuration(3)
-      setInterval(INTERVALS.DAYS)
+      setWaitInterval(INTERVALS.DAYS)
     }
   }, [
     entries,
@@ -124,7 +124,7 @@ const CreateEntryForm = ({ onSubmit, entries, ...props }) => {
       <Select
         label="Interval"
         value={interval}
-        onChange={setInterval}
+        onChange={setWaitInterval}
         options={Object.keys(INTERVALS).map((x) => ({
           id: INTERVALS[x],
           display: toTitleCase(x),
