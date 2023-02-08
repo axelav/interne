@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect } from 'react'
 import Head from 'next/head'
 import orderBy from 'lodash.orderby'
 import omit from 'lodash.omit'
@@ -39,10 +39,11 @@ const Index = () => {
   const [searchText, setSearchText] = useState('')
   const [visibleEntries, setVisibleEntries] = useState([])
 
-  const emptyListMsg = useMemo(
-    () => msgs[Math.floor(Math.random() * msgs.length)],
-    []
-  )
+  const emptyListMsg = msgs[1]
+  // const emptyListMsg = useMemo(
+  //   () => msgs[Math.floor(Math.random() * msgs.length)],
+  //   []
+  // )
 
   useEffect(() => {
     const handleKeydown = ({ keyCode }) => {
