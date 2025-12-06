@@ -1,0 +1,36 @@
+html,
+body {
+  padding: 0;
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'helvetica neue', helvetica,
+    arial, sans-serif;
+  color: rgba(0, 0, 0, 0.8);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.fade-enter {
+  opacity: 0;
+}
+
+.fade-enter-active {
+  opacity: 1;
+  transform: translateX(0);
+  transition: opacity 200ms, transform 200ms;
+}
+
+.fade-exit {
+  opacity: 1;
+}
+
+.fade-exit-active {
+  opacity: 0;
+  transition: opacity 200ms, transform 200ms;
+}
