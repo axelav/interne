@@ -1,4 +1,5 @@
-import type { Entry, Interval } from '../types/entry'
+import type { Entry } from '../types/entry'
+import type { Dayjs } from 'dayjs'
 import { getCurrentDate, getDate } from './date'
 
 const MAX = 7
@@ -14,7 +15,7 @@ export const getAvailableAtPlusEntropy = ({
   interval,
   duration,
 }: Pick<Entry, 'dismissed_at' | 'interval' | 'duration'>): {
-  availableAt: dayjs.Dayjs
+  availableAt: Dayjs
   diff: number
 } => {
   const now = getCurrentDate()
