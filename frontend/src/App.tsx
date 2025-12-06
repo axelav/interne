@@ -30,7 +30,7 @@ function AppContent() {
   const deleteEntry = useDeleteEntry()
 
   const [entry, setEntry] = useState<Entry | null>(null)
-  const [mode, setMode] = useState(MODES.VIEW)
+  const [mode, setMode] = useState<typeof MODES.VIEW | typeof MODES.EDIT>(MODES.VIEW)
   const [isFilterActive, setIsFilterActive] = useState(true)
   const [searchText, setSearchText] = useState('')
 
