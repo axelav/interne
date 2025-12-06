@@ -1,4 +1,4 @@
-import React, { forwardRef } from 'react'
+import React, { forwardRef, useRef, useImperativeHandle } from 'react'
 import { useButton } from '@react-aria/button'
 import styles from '../styles/Forms.module.css'
 
@@ -13,20 +13,35 @@ export function Form({ children }: FormProps) {
 interface InputProps {
   type?: string
   value: string | number
-  label: string
+  label?: string
   placeholder?: string
   onChange: (value: string) => void
   pattern?: string
   min?: number
 }
 
-export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ type = 'text', value, label, placeholder, onChange, pattern, min }, ref) => {
+export interface InputRef {
+  focus: () => void
+  addEventListener: (type: string, listener: EventListener) => void
+  className: string
+}
+
+export const Input = forwardRef<InputRef, InputProps>(
+  ({ type = 'text', value, label, placeholder, onChange, pattern, min, ...props }, ref) => {
+    const inputRef = useRef<HTMLInputElement>(null)
+
+    useImperativeHandle(ref, () => ({
+      focus: () => inputRef.current?.focus(),
+      addEventListener: (type: string, listener: EventListener) =>
+        inputRef.current?.addEventListener(type, listener),
+      className: inputRef.current?.className || '',
+    }))
+
     return (
-      <div className={styles.field}>
-        <label className={styles.label}>{label}</label>
+      <div className={styles.container}>
+        {!!label && <label className={styles.label}>{label}</label>}
         <input
-          ref={ref}
+          ref={inputRef}
           type={type}
           className={styles.input}
           value={value}
@@ -34,6 +49,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           onChange={(e) => onChange(e.target.value)}
           pattern={pattern}
           min={min}
+          {...props}
         />
       </div>
     )
@@ -48,7 +64,7 @@ interface SelectOption {
 }
 
 interface SelectProps {
-  label: string
+  label?: string
   value: string
   onChange: (value: string) => void
   options: SelectOption[]
@@ -56,8 +72,8 @@ interface SelectProps {
 
 export function Select({ label, value, onChange, options }: SelectProps) {
   return (
-    <div className={styles.field}>
-      <label className={styles.label}>{label}</label>
+    <div className={styles.container}>
+      {!!label && <label className={styles.label}>{label}</label>}
       <select className={styles.select} value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map((option) => (
           <option key={option.id} value={option.id}>
@@ -70,18 +86,38 @@ export function Select({ label, value, onChange, options }: SelectProps) {
 }
 
 interface ButtonProps {
-  label: string
-  onClick: () => void
+  onClick?: () => void
   children: React.ReactNode
 }
 
-export function Button({ label, onClick, children }: ButtonProps) {
+export function Button({ onClick, children }: ButtonProps) {
   const ref = React.useRef<HTMLButtonElement>(null)
   const { buttonProps } = useButton({ onPress: onClick }, ref)
 
   return (
-    <button {...buttonProps} ref={ref} className={styles.button}>
-      {children}
-    </button>
+    <div className={styles['button-container']}>
+      <button {...buttonProps} ref={ref} className={styles.button}>
+        {children}
+      </button>
+    </div>
+  )
+}
+
+interface TextareaProps {
+  label?: string
+  value: string | number
+  onChange: (value: string) => void
+}
+
+export function Textarea({ label, value, onChange }: TextareaProps) {
+  return (
+    <div className={styles.container}>
+      {!!label && <label className={styles.label}>{label}</label>}
+      <textarea
+        className={styles.textarea}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
   )
 }
