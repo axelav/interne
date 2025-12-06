@@ -9,8 +9,8 @@ export const INTERVALS: Record<Uppercase<Interval>, Interval> = {
 }
 
 export const MODES = {
-  VIEW: 'VIEW',
-  EDIT: 'EDIT',
+  VIEW: 'view',
+  EDIT: 'edit',
 } as const
 
 export const KEY_CODES = {
