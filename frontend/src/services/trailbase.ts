@@ -1,6 +1,3 @@
-import type { Entry } from '../types/entry'
-import type { AuthResponse, LoginCredentials, RegisterCredentials } from '../types/user'
-
 const API_BASE = '/api'
 
 class TrailBaseClient {
@@ -10,9 +7,9 @@ class TrailBaseClient {
     endpoint: string,
     options: RequestInit = {}
   ): Promise<T> {
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(options.headers as Record<string, string>),
     }
 
     if (this.accessToken) {
