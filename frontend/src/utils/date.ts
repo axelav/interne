@@ -1,18 +1,18 @@
-import dayjs, { Dayjs } from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
-import localizedFormat from 'dayjs/plugin/localizedFormat'
+import dayjs, { Dayjs } from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+import localizedFormat from "dayjs/plugin/localizedFormat";
 
-dayjs.extend(relativeTime)
-dayjs.extend(localizedFormat)
+dayjs.extend(relativeTime);
+dayjs.extend(localizedFormat);
 
-export const getCurrentDate = (): Dayjs => dayjs()
+export const getCurrentDate = (): Dayjs => dayjs();
 
-export const getDate = (date: string): Dayjs => dayjs(date)
+export const getDate = (date: string): Dayjs => dayjs(date);
 
 export const getRelativeTimeFromNow = (date: string): string => {
-  return dayjs(date).fromNow()
-}
+  return dayjs(date).fromNow();
+};
 
 export const getCurrentDateLocalized = (): string => {
-  return dayjs().format('LL')
-}
+  return dayjs().format("LL");
+};

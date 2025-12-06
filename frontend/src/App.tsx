@@ -1,83 +1,95 @@
-import { useState, useEffect, useMemo } from 'react'
-import orderBy from 'lodash.orderby'
-import AuthProvider from './components/AuthProvider'
-import CreateEntryForm from './components/CreateEntryForm'
-import Header from './components/Header'
-import Footer from './components/Footer'
-import { useEntries, useCreateEntry, useUpdateEntry, useDeleteEntry } from './hooks/useEntries'
-import { getAvailableAtPlusEntropy } from './utils/entropy'
-import { getRelativeTimeFromNow } from './utils/date'
-import { MODES, KEY_CODES } from './utils/constants'
-import type { Entry, CreateEntryInput } from './types/entry'
-import pageStyles from './styles/Pages.module.css'
-import styles from './styles/Index.module.css'
+import { useState, useEffect, useMemo } from "react";
+import orderBy from "lodash.orderby";
+import AuthProvider from "./components/AuthProvider";
+import CreateEntryForm from "./components/CreateEntryForm";
+import Header from "./components/Header";
+import Footer from "./components/Footer";
+import {
+  useEntries,
+  useCreateEntry,
+  useUpdateEntry,
+  useDeleteEntry,
+} from "./hooks/useEntries";
+import { getAvailableAtPlusEntropy } from "./utils/entropy";
+import { getRelativeTimeFromNow } from "./utils/date";
+import { MODES, KEY_CODES } from "./utils/constants";
+import type { Entry, CreateEntryInput } from "./types/entry";
+import pageStyles from "./styles/Pages.module.css";
+import styles from "./styles/Index.module.css";
 
 const msgs = [
   {
-    en: 'Read a book!',
-    eo: 'Legi libron!',
+    en: "Read a book!",
+    eo: "Legi libron!",
   },
   {
-    en: 'Go outside!',
-    eo: 'Iru eksteren!',
+    en: "Go outside!",
+    eo: "Iru eksteren!",
   },
-]
+];
 
 function AppContent() {
-  const { data: entries = [], isLoading } = useEntries()
-  const createEntry = useCreateEntry()
-  const updateEntry = useUpdateEntry()
-  const deleteEntry = useDeleteEntry()
+  const { data: entries = [], isLoading } = useEntries();
+  const createEntry = useCreateEntry();
+  const updateEntry = useUpdateEntry();
+  const deleteEntry = useDeleteEntry();
 
-  const [entry, setEntry] = useState<Entry | null>(null)
-  const [mode, setMode] = useState<typeof MODES.VIEW | typeof MODES.EDIT>(MODES.VIEW)
-  const [isFilterActive, setIsFilterActive] = useState(true)
-  const [searchText, setSearchText] = useState('')
+  const [entry, setEntry] = useState<Entry | null>(null);
+  const [mode, setMode] = useState<typeof MODES.VIEW | typeof MODES.EDIT>(
+    MODES.VIEW,
+  );
+  const [isFilterActive, setIsFilterActive] = useState(true);
+  const [searchText, setSearchText] = useState("");
 
-  const emptyListMsg = msgs[1]
+  const emptyListMsg = msgs[1];
 
   // Compute visible/availableAt for each entry
   const entriesWithComputed = useMemo(() => {
     return entries.map((entry) => {
-      const { availableAt, diff } = getAvailableAtPlusEntropy(entry)
-      const visible = diff < 0
-      return { ...entry, visible, availableAt: availableAt.toDate() }
-    })
-  }, [entries])
+      const { availableAt, diff } = getAvailableAtPlusEntropy(entry);
+      const visible = diff < 0;
+      return { ...entry, visible, availableAt: availableAt.toDate() };
+    });
+  }, [entries]);
 
   // Filter and sort entries
   const visibleEntries = useMemo(() => {
     const filtered = entriesWithComputed.filter((x) => {
       if (searchText) {
-        const escapeRegExp = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-        const regex = new RegExp(escapeRegExp(searchText), 'gi')
-        return x.title?.match(regex) || x.description?.match(regex) || x.url?.match(regex)
+        const escapeRegExp = (str: string) =>
+          str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const regex = new RegExp(escapeRegExp(searchText), "gi");
+        return (
+          x.title?.match(regex) ||
+          x.description?.match(regex) ||
+          x.url?.match(regex)
+        );
       } else {
-        return isFilterActive ? x.visible : true
+        return isFilterActive ? x.visible : true;
       }
-    })
+    });
 
     return orderBy(
       filtered,
-      isFilterActive ? ['dismissed_at'] : ['dismissed_at', 'availableAt'],
-      isFilterActive ? ['desc'] : ['desc', 'asc']
-    )
-  }, [entriesWithComputed, isFilterActive, searchText])
+      isFilterActive ? ["dismissed_at"] : ["dismissed_at", "availableAt"],
+      isFilterActive ? ["desc"] : ["desc", "asc"],
+    );
+  }, [entriesWithComputed, isFilterActive, searchText]);
 
   useEffect(() => {
     const handleKeydown = (e: KeyboardEvent) => {
       if (e.keyCode === KEY_CODES.ESC) {
         if (mode === MODES.EDIT) {
-          setMode(MODES.VIEW)
+          setMode(MODES.VIEW);
         } else if (document.activeElement === document.body) {
-          setIsFilterActive(!isFilterActive)
+          setIsFilterActive(!isFilterActive);
         }
       }
-    }
+    };
 
-    document.addEventListener('keydown', handleKeydown)
-    return () => document.removeEventListener('keydown', handleKeydown)
-  }, [isFilterActive, mode])
+    document.addEventListener("keydown", handleKeydown);
+    return () => document.removeEventListener("keydown", handleKeydown);
+  }, [isFilterActive, mode]);
 
   const handleEntryClick = (entry: Entry) => {
     setTimeout(() => {
@@ -86,38 +98,38 @@ function AppContent() {
         updates: {
           dismissed_at: new Date().toISOString(),
         },
-      })
-    }, 200)
-  }
+      });
+    }, 200);
+  };
 
-  const handleViewFilterClick = () => setIsFilterActive(!isFilterActive)
+  const handleViewFilterClick = () => setIsFilterActive(!isFilterActive);
 
   const handleSaveEntry = (input: CreateEntryInput) => {
     if (entry?.id) {
       updateEntry.mutate(
         { id: entry.id, updates: input },
-        { onSuccess: () => setMode(MODES.VIEW) }
-      )
+        { onSuccess: () => setMode(MODES.VIEW) },
+      );
     } else {
-      createEntry.mutate(input, { onSuccess: () => setMode(MODES.VIEW) })
+      createEntry.mutate(input, { onSuccess: () => setMode(MODES.VIEW) });
     }
-  }
+  };
 
   const handleEditEntry = (entry: Entry) => {
-    setEntry(entry)
-    setMode(MODES.EDIT)
-    window.scrollTo(0, 0)
-  }
+    setEntry(entry);
+    setMode(MODES.EDIT);
+    window.scrollTo(0, 0);
+  };
 
   const handleDeleteEntry = (entry: Entry) => {
-    const shouldDelete = window.confirm('Are you sure?')
+    const shouldDelete = window.confirm("Are you sure?");
     if (shouldDelete) {
-      deleteEntry.mutate(entry.id)
+      deleteEntry.mutate(entry.id);
     }
-  }
+  };
 
   if (isLoading) {
-    return <div className={pageStyles.container}>Loading...</div>
+    return <div className={pageStyles.container}>Loading...</div>;
   }
 
   return (
@@ -151,13 +163,17 @@ function AppContent() {
               visibleEntries.map((x) => (
                 <div
                   key={x.id}
-                  className={x.visible ? styles.card : `${styles.card} ${styles.unavailable}`}
+                  className={
+                    x.visible
+                      ? styles.card
+                      : `${styles.card} ${styles.unavailable}`
+                  }
                 >
                   <div className={styles.viewed}>
                     <span>
                       {x.dismissed_at
                         ? `Last viewed ${getRelativeTimeFromNow(x.dismissed_at)}`
-                        : 'Never viewed'}
+                        : "Never viewed"}
                     </span>
                   </div>
                   <a
@@ -170,26 +186,38 @@ function AppContent() {
                       <h2 title={x.title}>{x.title}</h2>
                       <div className={styles.rarr}>&rarr;</div>
                     </div>
-                    <p title={x.description || ''}>{x.description}</p>
+                    <p title={x.description || ""}>{x.description}</p>
                   </a>
 
-                  <div className={styles['flex-between']}>
+                  <div className={styles["flex-between"]}>
                     <div className={styles.availability}>
                       {!x.visible && x.availableAt && (
-                        <span>Available {getRelativeTimeFromNow(x.availableAt.toISOString())}</span>
+                        <span>
+                          Available{" "}
+                          {getRelativeTimeFromNow(x.availableAt.toISOString())}
+                        </span>
                       )}
                     </div>
 
                     <div className={styles.controls}>
                       {x.visible && (
-                        <div className={styles.ignore} onClick={() => handleEntryClick(x)}>
+                        <div
+                          className={styles.ignore}
+                          onClick={() => handleEntryClick(x)}
+                        >
                           Mark Read
                         </div>
                       )}
-                      <div className={styles.edit} onClick={() => handleEditEntry(x)}>
+                      <div
+                        className={styles.edit}
+                        onClick={() => handleEditEntry(x)}
+                      >
                         Edit
                       </div>
-                      <div className={styles.delete} onClick={() => handleDeleteEntry(x)}>
+                      <div
+                        className={styles.delete}
+                        onClick={() => handleDeleteEntry(x)}
+                      >
                         Delete
                       </div>
                     </div>
@@ -197,8 +225,11 @@ function AppContent() {
                 </div>
               ))
             ) : (
-              <p className={styles.empty} title={searchText ? 'Neniuj rezultoj' : emptyListMsg.eo}>
-                {searchText ? 'No results' : emptyListMsg.en}
+              <p
+                className={styles.empty}
+                title={searchText ? "Neniuj rezultoj" : emptyListMsg.eo}
+              >
+                {searchText ? "No results" : emptyListMsg.en}
               </p>
             )}
           </div>
@@ -210,16 +241,16 @@ function AppContent() {
           className={styles.filter}
           onClick={handleViewFilterClick}
           style={{
-            left: isFilterActive ? '-14px' : '-41px',
+            left: isFilterActive ? "-14px" : "-41px",
           }}
         >
-          {isFilterActive ? 'View All' : <span>View Available</span>}
+          {isFilterActive ? "View All" : <span>View Available</span>}
         </div>
       )}
 
       <Footer />
     </div>
-  )
+  );
 }
 
 export default function App() {
@@ -227,5 +258,5 @@ export default function App() {
     <AuthProvider>
       <AppContent />
     </AuthProvider>
-  )
+  );
 }
