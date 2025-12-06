@@ -1,0 +1,16 @@
+{
+  "database": {
+    "path": "data/interne.db"
+  },
+  "server": {
+    "port": 4000,
+    "cors": {
+      "allowed_origins": ["http://localhost:5173"]
+    }
+  },
+  "auth": {
+    "jwt_secret": "CHANGE_THIS_IN_PRODUCTION",
+    "access_token_ttl": 900,
+    "refresh_token_ttl": 604800
+  }
+}
