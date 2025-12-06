@@ -1,19 +1,19 @@
-import { useState, useRef, useEffect } from 'react'
-import { CSSTransition } from 'react-transition-group'
-import { Input } from './Forms'
-import type { InputRef } from './Forms'
-import { getCurrentDateLocalized } from '../utils/date'
-import { toTitleCase } from '../utils/formatters'
-import { MODES, KEY_CODES } from '../utils/constants'
-import packageData from '../../package.json'
-import styles from '../styles/Header.module.css'
+import { useState, useRef, useEffect } from "react";
+import { CSSTransition } from "react-transition-group";
+import { Input } from "./Forms";
+import type { InputRef } from "./Forms";
+import { getCurrentDateLocalized } from "../utils/date";
+import { toTitleCase } from "../utils/formatters";
+import { MODES, KEY_CODES } from "../utils/constants";
+import packageData from "../../package.json";
+import styles from "../styles/Header.module.css";
 
 interface HeaderProps {
-  mode: typeof MODES.VIEW | typeof MODES.EDIT
-  setMode: (mode: typeof MODES.VIEW | typeof MODES.EDIT) => void
-  setEntry: (entry: null) => void
-  searchText: string
-  setSearchText: (text: string) => void
+  mode: typeof MODES.VIEW | typeof MODES.EDIT;
+  setMode: (mode: typeof MODES.VIEW | typeof MODES.EDIT) => void;
+  setEntry: (entry: null) => void;
+  searchText: string;
+  setSearchText: (text: string) => void;
 }
 
 export default function Header({
@@ -23,38 +23,39 @@ export default function Header({
   searchText,
   setSearchText,
 }: HeaderProps) {
-  const [showSearch, setShowSearch] = useState(false)
-  const [showDate, setShowDate] = useState(true)
-  const inputRef = useRef<InputRef>(null)
+  const [showSearch, setShowSearch] = useState(false);
+  const [showDate, setShowDate] = useState(true);
+  const inputRef = useRef<InputRef>(null);
 
   useEffect(() => {
     const handleKeydown = (ev: KeyboardEvent) => {
       if (ev.keyCode === KEY_CODES.FWD_SLASH) {
         if (document.activeElement === document.body) {
-          setShowSearch(true)
-          inputRef.current?.focus()
+          setShowSearch(true);
+          inputRef.current?.focus();
 
           // prevent `/` character from being used as input value
-          ev.preventDefault()
-          ev.stopPropagation()
+          ev.preventDefault();
+          ev.stopPropagation();
         }
       }
 
       if (ev.keyCode === KEY_CODES.ESC) {
         if (
           !!inputRef.current &&
-          inputRef.current.className === (document.activeElement as HTMLElement).className
+          inputRef.current.className ===
+            (document.activeElement as HTMLElement).className
         ) {
-          setSearchText('')
-          setShowSearch(false)
+          setSearchText("");
+          setShowSearch(false);
         }
       }
-    }
+    };
 
-    document.addEventListener('keydown', handleKeydown)
+    document.addEventListener("keydown", handleKeydown);
 
-    return () => document.removeEventListener('keydown', handleKeydown)
-  }, [searchText, setSearchText])
+    return () => document.removeEventListener("keydown", handleKeydown);
+  }, [searchText, setSearchText]);
 
   useEffect(() => {
     if (inputRef.current) {
@@ -64,13 +65,13 @@ export default function Header({
       // 3. hit `/` to focus input again
       // 4. enter new text
       // 5. blur - input value remains but input is hidden
-      inputRef.current.addEventListener('blur', () => {
+      inputRef.current.addEventListener("blur", () => {
         if (!searchText) {
-          setShowSearch(false)
+          setShowSearch(false);
         }
-      })
+      });
     }
-  }, [searchText])
+  }, [searchText]);
 
   return (
     <header className={styles.header}>
@@ -82,21 +83,21 @@ export default function Header({
         <div
           className={styles.mode}
           onClick={() => {
-            setEntry(null)
+            setEntry(null);
 
             switch (mode) {
               case MODES.EDIT:
-                setMode(MODES.VIEW)
-                break
+                setMode(MODES.VIEW);
+                break;
               case MODES.VIEW:
-                setMode(MODES.EDIT)
-                break
+                setMode(MODES.EDIT);
+                break;
               default:
-                setMode(MODES.VIEW)
+                setMode(MODES.VIEW);
             }
           }}
         >
-          {mode === MODES.EDIT ? 'View Entries' : 'Add Entry'}
+          {mode === MODES.EDIT ? "View Entries" : "Add Entry"}
         </div>
       )}
 
@@ -105,7 +106,7 @@ export default function Header({
         onMouseEnter={() => setShowSearch(true)}
         onMouseLeave={() => {
           if (!searchText) {
-            setShowSearch(false)
+            setShowSearch(false);
           }
         }}
       >
@@ -115,8 +116,8 @@ export default function Header({
           classNames="fade"
           unmountOnExit
           onEnter={() => {
-            setShowDate(false)
-            inputRef.current?.focus()
+            setShowDate(false);
+            inputRef.current?.focus();
           }}
           onExited={() => setShowDate(true)}
         >
@@ -142,5 +143,5 @@ export default function Header({
         </CSSTransition>
       </div>
     </header>
-  )
+  );
 }

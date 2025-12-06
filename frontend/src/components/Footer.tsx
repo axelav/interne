@@ -1,5 +1,5 @@
-import packageData from '../../package.json'
-import styles from '../styles/Footer.module.css'
+import packageData from "../../package.json";
+import styles from "../styles/Footer.module.css";
 
 export default function Footer() {
   return (
@@ -10,5 +10,5 @@ export default function Footer() {
         Powered by honkytonkin'
       </a>
     </footer>
-  )
+  );
 }

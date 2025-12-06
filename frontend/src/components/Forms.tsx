@@ -1,41 +1,53 @@
-import React, { forwardRef, useRef, useImperativeHandle } from 'react'
-import { useButton } from '@react-aria/button'
-import styles from '../styles/Forms.module.css'
+import React, { forwardRef, useRef, useImperativeHandle } from "react";
+import { useButton } from "@react-aria/button";
+import styles from "../styles/Forms.module.css";
 
 interface FormProps {
-  children: React.ReactNode
+  children: React.ReactNode;
 }
 
 export function Form({ children }: FormProps) {
-  return <form className={styles.form}>{children}</form>
+  return <form className={styles.form}>{children}</form>;
 }
 
 interface InputProps {
-  type?: string
-  value: string | number
-  label?: string
-  placeholder?: string
-  onChange: (value: string) => void
-  pattern?: string
-  min?: number
+  type?: string;
+  value: string | number;
+  label?: string;
+  placeholder?: string;
+  onChange: (value: string) => void;
+  pattern?: string;
+  min?: number;
 }
 
 export interface InputRef {
-  focus: () => void
-  addEventListener: (type: string, listener: EventListener) => void
-  className: string
+  focus: () => void;
+  addEventListener: (type: string, listener: EventListener) => void;
+  className: string;
 }
 
 export const Input = forwardRef<InputRef, InputProps>(
-  ({ type = 'text', value, label, placeholder, onChange, pattern, min, ...props }, ref) => {
-    const inputRef = useRef<HTMLInputElement>(null)
+  (
+    {
+      type = "text",
+      value,
+      label,
+      placeholder,
+      onChange,
+      pattern,
+      min,
+      ...props
+    },
+    ref,
+  ) => {
+    const inputRef = useRef<HTMLInputElement>(null);
 
     useImperativeHandle(ref, () => ({
       focus: () => inputRef.current?.focus(),
       addEventListener: (type: string, listener: EventListener) =>
         inputRef.current?.addEventListener(type, listener),
-      className: inputRef.current?.className || '',
-    }))
+      className: inputRef.current?.className || "",
+    }));
 
     return (
       <div className={styles.container}>
@@ -52,29 +64,33 @@ export const Input = forwardRef<InputRef, InputProps>(
           {...props}
         />
       </div>
-    )
-  }
-)
+    );
+  },
+);
 
-Input.displayName = 'Input'
+Input.displayName = "Input";
 
 interface SelectOption {
-  id: string
-  display: string
+  id: string;
+  display: string;
 }
 
 interface SelectProps {
-  label?: string
-  value: string
-  onChange: (value: string) => void
-  options: SelectOption[]
+  label?: string;
+  value: string;
+  onChange: (value: string) => void;
+  options: SelectOption[];
 }
 
 export function Select({ label, value, onChange, options }: SelectProps) {
   return (
     <div className={styles.container}>
       {!!label && <label className={styles.label}>{label}</label>}
-      <select className={styles.select} value={value} onChange={(e) => onChange(e.target.value)}>
+      <select
+        className={styles.select}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
         {options.map((option) => (
           <option key={option.id} value={option.id}>
             {option.display}
@@ -82,31 +98,31 @@ export function Select({ label, value, onChange, options }: SelectProps) {
         ))}
       </select>
     </div>
-  )
+  );
 }
 
 interface ButtonProps {
-  onClick?: () => void
-  children: React.ReactNode
+  onClick?: () => void;
+  children: React.ReactNode;
 }
 
 export function Button({ onClick, children }: ButtonProps) {
-  const ref = React.useRef<HTMLButtonElement>(null)
-  const { buttonProps } = useButton({ onPress: onClick }, ref)
+  const ref = React.useRef<HTMLButtonElement>(null);
+  const { buttonProps } = useButton({ onPress: onClick }, ref);
 
   return (
-    <div className={styles['button-container']}>
+    <div className={styles["button-container"]}>
       <button {...buttonProps} ref={ref} className={styles.button}>
         {children}
       </button>
     </div>
-  )
+  );
 }
 
 interface TextareaProps {
-  label?: string
-  value: string | number
-  onChange: (value: string) => void
+  label?: string;
+  value: string | number;
+  onChange: (value: string) => void;
 }
 
 export function Textarea({ label, value, onChange }: TextareaProps) {
@@ -119,5 +135,5 @@ export function Textarea({ label, value, onChange }: TextareaProps) {
         onChange={(e) => onChange(e.target.value)}
       />
     </div>
-  )
+  );
 }

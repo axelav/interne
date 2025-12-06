@@ -1,6 +1,6 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { useCurrentUser } from '../hooks/useAuth'
-import LoginForm from './LoginForm'
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useCurrentUser } from "../hooks/useAuth";
+import LoginForm from "./LoginForm";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -9,24 +9,24 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
     },
   },
-})
+});
 
 interface AuthProviderProps {
-  children: React.ReactNode
+  children: React.ReactNode;
 }
 
 function AuthGuard({ children }: AuthProviderProps) {
-  const { data: user, isLoading } = useCurrentUser()
+  const { data: user, isLoading } = useCurrentUser();
 
   if (isLoading) {
-    return <div>Loading...</div>
+    return <div>Loading...</div>;
   }
 
   if (!user) {
-    return <LoginForm />
+    return <LoginForm />;
   }
 
-  return <>{children}</>
+  return <>{children}</>;
 }
 
 export default function AuthProvider({ children }: AuthProviderProps) {
@@ -34,5 +34,5 @@ export default function AuthProvider({ children }: AuthProviderProps) {
     <QueryClientProvider client={queryClient}>
       <AuthGuard>{children}</AuthGuard>
     </QueryClientProvider>
-  )
+  );
 }

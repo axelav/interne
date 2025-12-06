@@ -1,50 +1,49 @@
-const API_BASE = '/api'
+const API_BASE = "/api";
 
 class TrailBaseClient {
-  private accessToken: string | null = null
+  private accessToken: string | null = null;
 
-  async request<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> {
+  async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...(options.headers as Record<string, string>),
-    }
+    };
 
     if (this.accessToken) {
-      headers['Authorization'] = `Bearer ${this.accessToken}`
+      headers["Authorization"] = `Bearer ${this.accessToken}`;
     }
 
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers,
-    })
+    });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ message: response.statusText }))
-      throw new Error(error.message || 'Request failed')
+      const error = await response
+        .json()
+        .catch(() => ({ message: response.statusText }));
+      throw new Error(error.message || "Request failed");
     }
 
-    return response.json()
+    return response.json();
   }
 
   setAccessToken(token: string) {
-    this.accessToken = token
-    localStorage.setItem('access_token', token)
+    this.accessToken = token;
+    localStorage.setItem("access_token", token);
   }
 
   clearAccessToken() {
-    this.accessToken = null
-    localStorage.removeItem('access_token')
+    this.accessToken = null;
+    localStorage.removeItem("access_token");
   }
 
   getAccessToken(): string | null {
     if (!this.accessToken) {
-      this.accessToken = localStorage.getItem('access_token')
+      this.accessToken = localStorage.getItem("access_token");
     }
-    return this.accessToken
+    return this.accessToken;
   }
 }
 
-export const trailbase = new TrailBaseClient()
+export const trailbase = new TrailBaseClient();
