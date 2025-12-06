@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  interne:
+    build: .
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_PATH=/app/data/interne.db
+    restart: unless-stopped
