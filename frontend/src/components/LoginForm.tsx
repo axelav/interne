@@ -7,6 +7,7 @@ export default function LoginForm() {
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordRepeat, setPasswordRepeat] = useState("");
   const [error, setError] = useState("");
 
   const login = useLogin();
@@ -18,11 +19,16 @@ export default function LoginForm() {
       return;
     }
 
+    if (isRegister && password !== passwordRepeat) {
+      setError("Passwords do not match.");
+      return;
+    }
+
     setError("");
 
     try {
       if (isRegister) {
-        await register.mutateAsync({ email, password });
+        await register.mutateAsync({ email, password, password_repeat: passwordRepeat });
       } else {
         await login.mutateAsync({ email, password });
       }
@@ -43,6 +49,14 @@ export default function LoginForm() {
           label="Password"
           onChange={setPassword}
         />
+        {isRegister && (
+          <Input
+            type="password"
+            value={passwordRepeat}
+            label="Confirm Password"
+            onChange={setPasswordRepeat}
+          />
+        )}
         <Button onClick={handleSubmit}>
           {isRegister ? "Register" : "Login"}
         </Button>
@@ -52,6 +66,7 @@ export default function LoginForm() {
         onClick={() => {
           setIsRegister(!isRegister);
           setError("");
+          setPasswordRepeat("");
         }}
       >
         {isRegister

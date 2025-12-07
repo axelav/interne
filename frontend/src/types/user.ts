@@ -1,13 +1,15 @@
 export interface User {
   id: string;
   email: string;
-  created_at: string;
+  verified: boolean;
+  admin: boolean;
+  created: number;
 }
 
 export interface AuthResponse {
-  user: User;
-  access_token: string;
+  auth_token: string;
   refresh_token: string;
+  csrf_token: string;
 }
 
 export interface LoginCredentials {
@@ -18,4 +20,5 @@ export interface LoginCredentials {
 export interface RegisterCredentials {
   email: string;
   password: string;
+  password_repeat: string;
 }

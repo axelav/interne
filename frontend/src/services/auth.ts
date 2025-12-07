@@ -9,29 +9,35 @@ import { trailbase } from "./trailbase";
 export async function login(
   credentials: LoginCredentials,
 ): Promise<AuthResponse> {
-  const response = await trailbase.request<AuthResponse>("/auth/login", {
+  const response = await trailbase.request<AuthResponse>("/auth/v1/login", {
     method: "POST",
     body: JSON.stringify(credentials),
   });
 
-  trailbase.setAccessToken(response.access_token);
+  trailbase.setAccessToken(response.auth_token);
   return response;
 }
 
 export async function register(
   credentials: RegisterCredentials,
 ): Promise<AuthResponse> {
-  const response = await trailbase.request<AuthResponse>("/auth/register", {
+  const response = await trailbase.request<AuthResponse>("/auth/v1/register", {
     method: "POST",
     body: JSON.stringify(credentials),
   });
 
-  trailbase.setAccessToken(response.access_token);
+  trailbase.setAccessToken(response.auth_token);
   return response;
 }
 
 export async function logout(): Promise<void> {
-  trailbase.clearAccessToken();
+  try {
+    await trailbase.request<void>("/auth/v1/logout", {
+      method: "POST",
+    });
+  } finally {
+    trailbase.clearAccessToken();
+  }
 }
 
 export async function getCurrentUser(): Promise<User | null> {
@@ -39,7 +45,7 @@ export async function getCurrentUser(): Promise<User | null> {
   if (!token) return null;
 
   try {
-    return await trailbase.request<User>("/auth/me");
+    return await trailbase.request<User>("/auth/v1/status");
   } catch {
     trailbase.clearAccessToken();
     return null;

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as entriesService from "../services/entries";
 import type { CreateEntryInput, UpdateEntryInput } from "../types/entry";
-sL;
+
 export function useEntries() {
   return useQuery({
     queryKey: ["entries"],

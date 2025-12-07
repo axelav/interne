@@ -16,8 +16,9 @@ export function useLogin() {
   return useMutation({
     mutationFn: (credentials: LoginCredentials) =>
       authService.login(credentials),
-    onSuccess: (data) => {
-      queryClient.setQueryData(["user"], data.user);
+    onSuccess: () => {
+      // Invalidate user query to trigger refetch with new auth token
+      queryClient.invalidateQueries({ queryKey: ["user"] });
     },
   });
 }
@@ -28,8 +29,9 @@ export function useRegister() {
   return useMutation({
     mutationFn: (credentials: RegisterCredentials) =>
       authService.register(credentials),
-    onSuccess: (data) => {
-      queryClient.setQueryData(["user"], data.user);
+    onSuccess: () => {
+      // Invalidate user query to trigger refetch with new auth token
+      queryClient.invalidateQueries({ queryKey: ["user"] });
     },
   });
 }
