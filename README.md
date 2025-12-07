@@ -29,15 +29,17 @@ A spaced-repetition bookmark manager that resurfaces saved websites after config
 
 - Node.js 20+
 - pnpm (`npm install -g pnpm`)
-- TrailBase executable (download from trailbase.io)
+- TrailBase (`curl -sSL https://trailbase.io/install.sh | bash`)
 
 ### Setup
 
 1. **Backend:**
    ```bash
    cd backend
-   ./trailbase
+   trail run --dev
    ```
+
+   Note: The `--dev` flag enables permissive CORS for local development with the Vite dev server.
 
 2. **Frontend:**
    ```bash
@@ -47,17 +49,16 @@ A spaced-repetition bookmark manager that resurfaces saved websites after config
    ```
 
 3. **Access:**
-   - Frontend: http://localhost:5173
-   - Backend: http://localhost:4000
+   - Frontend (dev): http://localhost:5173
+   - Backend API: http://localhost:4000
+   - TrailBase Admin: http://localhost:4000/_/admin/
 
 ### Project Structure
 
 ```
 interne/
-├── backend/           # TrailBase configuration
-│   ├── trailbase      # TrailBase executable
-│   ├── config.json    # Server configuration
-│   └── migrations/    # Database schema
+├── backend/
+│   └── migrations/    # Database schema migrations
 ├── frontend/          # Vite React app
 │   ├── src/
 │   │   ├── components/
@@ -67,7 +68,9 @@ interne/
 │   │   ├── types/
 │   │   └── utils/
 │   └── package.json
-└── docker-compose.yml # Docker deployment
+├── traildepot/        # TrailBase runtime data (created on first run)
+├── Dockerfile
+└── docker-compose.yml
 ```
 
 ## Deployment
@@ -96,13 +99,17 @@ interne/
 
 ### Backups
 
-Database is a single SQLite file:
+The TrailBase data directory contains the SQLite database and configuration:
 
 ```bash
-docker-compose exec interne cp /app/data/interne.db /app/data/backup.db
+# Backup the entire traildepot directory
+tar -czf backup-$(date +%Y%m%d).tar.gz traildepot/
 ```
 
-Copy `data/interne.db` to external storage regularly.
+Or copy just the database:
+```bash
+docker-compose exec interne cp /app/traildepot/main.db /app/traildepot/backup.db
+```
 
 ## License
 

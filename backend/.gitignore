@@ -1,5 +1,2 @@
-data/
-*.db
-*.db-shm
-*.db-wal
-trailbase
+# TrailBase runtime directory (managed locally, not in Docker)
+traildepot/

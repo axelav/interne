@@ -6,7 +6,5 @@ services:
     ports:
       - "4000:4000"
     volumes:
-      - ./data:/app/data
-    environment:
-      - DATABASE_PATH=/app/data/interne.db
+      - ./traildepot:/app/traildepot
     restart: unless-stopped

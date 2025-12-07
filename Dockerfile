@@ -18,25 +18,21 @@ COPY frontend/ ./
 # Build
 RUN pnpm run build
 
-# Runtime image
-FROM debian:bookworm-slim
+# Runtime - Use official TrailBase image
+FROM trailbase/trailbase:latest
 
 WORKDIR /app
 
-# Copy TrailBase executable (you need to download this first)
-COPY backend/trailbase /usr/local/bin/trailbase
-RUN chmod +x /usr/local/bin/trailbase
+# Copy frontend build to be served as static files
+COPY --from=frontend-builder /app/frontend/dist /app/public
 
-# Copy frontend build
-COPY --from=frontend-builder /app/frontend/dist /app/static
+# Copy migrations
+COPY backend/migrations /app/traildepot/migrations
 
-# Copy backend config and migrations
-COPY backend/config.json /app/config.json
-COPY backend/migrations /app/migrations
-
-# Create data directory
-RUN mkdir -p /app/data
+# Create traildepot directory for data persistence
+RUN mkdir -p /app/traildepot
 
 EXPOSE 4000
 
-CMD ["trailbase", "--static-files", "/app/static", "--config", "/app/config.json"]
+# Run TrailBase with public directory for frontend and custom data directory
+CMD ["/app/trail", "run", "--address", "0.0.0.0:4000", "--public-dir", "/app/public", "--data-dir", "/app/traildepot"]
