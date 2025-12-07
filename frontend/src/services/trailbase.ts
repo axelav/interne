@@ -1,21 +1,16 @@
 const API_BASE = "/api";
 
 class TrailBaseClient {
-  private accessToken: string | null = null;
-
   async request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...(options.headers as Record<string, string>),
     };
 
-    if (this.accessToken) {
-      headers["Authorization"] = `Bearer ${this.accessToken}`;
-    }
-
     const response = await fetch(`${API_BASE}${endpoint}`, {
       ...options,
       headers,
+      credentials: 'include', // Include cookies for auth
     });
 
     if (!response.ok) {
@@ -25,24 +20,13 @@ class TrailBaseClient {
       throw new Error(error.message || "Request failed");
     }
 
-    return response.json();
-  }
-
-  setAccessToken(token: string) {
-    this.accessToken = token;
-    localStorage.setItem("access_token", token);
-  }
-
-  clearAccessToken() {
-    this.accessToken = null;
-    localStorage.removeItem("access_token");
-  }
-
-  getAccessToken(): string | null {
-    if (!this.accessToken) {
-      this.accessToken = localStorage.getItem("access_token");
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      return response.json();
     }
-    return this.accessToken;
+
+    // If not JSON, return empty object (for endpoints that don't return data)
+    return {} as T;
   }
 }
 
