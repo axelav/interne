@@ -1,15 +1,9 @@
-export interface User {
-  id: string;
+import type { RecordModel } from 'pocketbase';
+
+export interface User extends RecordModel {
   email: string;
   verified: boolean;
-  admin: boolean;
-  created: number;
-}
-
-export interface AuthResponse {
-  auth_token: string;
-  refresh_token: string;
-  csrf_token: string;
+  name?: string;
 }
 
 export interface LoginCredentials {
@@ -20,5 +14,5 @@ export interface LoginCredentials {
 export interface RegisterCredentials {
   email: string;
   password: string;
-  password_repeat: string;
+  passwordConfirm: string;
 }
