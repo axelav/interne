@@ -33,5 +33,5 @@ yarn-error.log*
 # vercel
 .vercel
 
-# TrailBase data directory
-traildepot/
+# PocketBase data directory
+pb_data/
