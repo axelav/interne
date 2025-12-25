@@ -2,30 +2,32 @@ export type Interval = "hours" | "days" | "weeks" | "months" | "years";
 
 export interface Entry {
   id: string;
-  user_id: string;
+  user: string;
   url: string;
   title: string;
-  description: string | null;
+  description: string;
   duration: number;
   interval: Interval;
   visited: number;
-  created_at: string;
-  updated_at: string | null;
-  dismissed_at: string | null;
+  created: string;
+  updated: string;
+  dismissed: string;
+  collectionId: string;
+  collectionName: string;
   // Computed client-side
   visible?: boolean;
-  availableAt?: Date;
+  nextAvailable?: Date;
 }
 
-export type CreateEntryInput = Omit<
-  Entry,
-  | "id"
-  | "user_id"
-  | "created_at"
-  | "updated_at"
-  | "visited"
-  | "visible"
-  | "availableAt"
->;
+export type CreateEntryInput = {
+  url: string;
+  title: string;
+  description?: string;
+  duration: number;
+  interval: Interval;
+  dismissed?: string;
+};
 
-export type UpdateEntryInput = Partial<CreateEntryInput>;
+export type UpdateEntryInput = Partial<CreateEntryInput> & {
+  visited?: number;
+};
