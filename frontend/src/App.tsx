@@ -43,12 +43,12 @@ function AppContent() {
 
   const emptyListMsg = msgs[1];
 
-  // Compute visible/availableAt for each entry
+  // Compute visible/nextAvailable for each entry
   const entriesWithComputed = useMemo(() => {
     return entries.map((entry) => {
-      const { availableAt, diff } = getAvailableAtPlusEntropy(entry);
+      const { nextAvailable, diff } = getAvailableAtPlusEntropy(entry);
       const visible = diff < 0;
-      return { ...entry, visible, availableAt: availableAt.toDate() };
+      return { ...entry, visible, nextAvailable: nextAvailable.toDate() };
     });
   }, [entries]);
 
@@ -71,7 +71,7 @@ function AppContent() {
 
     return orderBy(
       filtered,
-      isFilterActive ? ["dismissed_at"] : ["dismissed_at", "availableAt"],
+      isFilterActive ? ["dismissed"] : ["dismissed", "nextAvailable"],
       isFilterActive ? ["desc"] : ["desc", "asc"],
     );
   }, [entriesWithComputed, isFilterActive, searchText]);
@@ -96,7 +96,7 @@ function AppContent() {
       updateEntry.mutate({
         id: entry.id,
         updates: {
-          dismissed_at: new Date().toISOString(),
+          dismissed: new Date().toISOString(),
         },
       });
     }, 200);
@@ -154,7 +154,7 @@ function AppContent() {
               description: entry.description,
               duration: entry.duration,
               interval: entry.interval,
-              dismissed_at: entry.dismissed_at,
+              dismissed: entry.dismissed,
             })}
           />
         ) : (
@@ -171,8 +171,8 @@ function AppContent() {
                 >
                   <div className={styles.viewed}>
                     <span>
-                      {x.dismissed_at
-                        ? `Last viewed ${getRelativeTimeFromNow(x.dismissed_at)}`
+                      {x.dismissed
+                        ? `Last viewed ${getRelativeTimeFromNow(x.dismissed)}`
                         : "Never viewed"}
                     </span>
                   </div>
@@ -191,10 +191,10 @@ function AppContent() {
 
                   <div className={styles["flex-between"]}>
                     <div className={styles.availability}>
-                      {!x.visible && x.availableAt && (
+                      {!x.visible && x.nextAvailable && (
                         <span>
                           Available{" "}
-                          {getRelativeTimeFromNow(x.availableAt.toISOString())}
+                          {getRelativeTimeFromNow(x.nextAvailable.toISOString())}
                         </span>
                       )}
                     </div>

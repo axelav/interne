@@ -28,7 +28,7 @@ export default function LoginForm() {
 
     try {
       if (isRegister) {
-        await register.mutateAsync({ email, password, password_repeat: passwordRepeat });
+        await register.mutateAsync({ email, password, passwordConfirm: passwordRepeat });
       } else {
         await login.mutateAsync({ email, password });
       }

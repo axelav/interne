@@ -11,33 +11,33 @@ const opts = {
 };
 
 export const getAvailableAtPlusEntropy = ({
-  dismissed_at,
+  dismissed,
   interval,
   duration,
-}: Pick<Entry, "dismissed_at" | "interval" | "duration">): {
-  availableAt: Dayjs;
+}: Pick<Entry, "dismissed" | "interval" | "duration">): {
+  nextAvailable: Dayjs;
   diff: number;
 } => {
   const now = getCurrentDate();
   const { entropy } = opts;
 
-  const availableAt = dismissed_at
-    ? getDate(dismissed_at).add(duration, interval as any)
+  const nextAvailable = dismissed
+    ? getDate(dismissed).add(duration, interval as any)
     : now.subtract(1, "seconds");
 
-  const diff = availableAt.diff(now);
+  const diff = nextAvailable.diff(now);
 
   if (entropy && diff > MILLIS_IN_DAY) {
-    const availableAtPlusEntropy = availableAt.add(
+    const nextAvailablePlusEntropy = nextAvailable.add(
       Math.floor(Math.random() * ((entropy / 10) * MAX)),
       "days",
     );
 
     return {
-      availableAt: availableAtPlusEntropy,
-      diff: availableAtPlusEntropy.diff(now),
+      nextAvailable: nextAvailablePlusEntropy,
+      diff: nextAvailablePlusEntropy.diff(now),
     };
   }
 
-  return { availableAt, diff };
+  return { nextAvailable, diff };
 };

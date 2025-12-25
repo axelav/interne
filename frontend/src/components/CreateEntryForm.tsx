@@ -25,7 +25,7 @@ interface CreateEntryFormProps {
   description?: string | null;
   duration?: number;
   interval?: Interval;
-  dismissed_at?: string | null;
+  dismissed?: string | null;
 }
 
 export default function CreateEntryForm({
@@ -37,7 +37,7 @@ export default function CreateEntryForm({
   description: initialDescription = "",
   duration: initialDuration = 3,
   interval: initialInterval = INTERVALS.DAYS,
-  dismissed_at: initialDismissedAt = null,
+  dismissed: initialDismissed = null,
 }: CreateEntryFormProps) {
   const [url, setUrl] = useState(initialUrl);
   const [title, setTitle] = useState(initialTitle);
@@ -85,10 +85,10 @@ export default function CreateEntryForm({
     const entry: CreateEntryInput = {
       url: new URL(url).href,
       title,
-      description: description || null,
+      description: description || undefined,
       duration: durationNum,
       interval,
-      dismissed_at: initialDismissedAt,
+      dismissed: initialDismissed || undefined,
     };
 
     onSubmit(entry);
@@ -109,7 +109,7 @@ export default function CreateEntryForm({
     interval,
     id,
     entries,
-    initialDismissedAt,
+    initialDismissed,
     onSubmit,
   ]);
 
