@@ -30,6 +30,7 @@ A spaced-repetition bookmark manager that resurfaces saved websites after config
 ### Prerequisites
 
 - Node.js 20+
+- pnpm (`npm install -g pnpm`)
 - Docker & Docker Compose
 
 ### Setup
@@ -47,12 +48,12 @@ A spaced-repetition bookmark manager that resurfaces saved websites after config
 3. **Install frontend dependencies:**
    ```bash
    cd frontend
-   npm install
+   pnpm install
    ```
 
 4. **Start development server:**
    ```bash
-   npm run dev
+   pnpm dev
    ```
 
 5. **Access:**
@@ -92,7 +93,7 @@ interne/
 2. **Build frontend:**
    ```bash
    cd frontend
-   npm run build
+   pnpm build
    ```
 
 3. **Run with Docker Compose:**
