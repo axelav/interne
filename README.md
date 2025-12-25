@@ -14,13 +14,15 @@ A spaced-repetition bookmark manager that resurfaces saved websites after config
 ## Tech Stack
 
 **Backend:**
-- TrailBase (Rust + SQLite)
+- PocketBase (Go + SQLite)
 - Built-in authentication
 - Auto-generated REST APIs
+- Admin UI for database management
 
 **Frontend:**
 - Vite + React 18 + TypeScript
 - React Query for server state
+- PocketBase JavaScript SDK
 - CSS Modules for styling
 
 ## Development
@@ -28,38 +30,42 @@ A spaced-repetition bookmark manager that resurfaces saved websites after config
 ### Prerequisites
 
 - Node.js 20+
-- pnpm (`npm install -g pnpm`)
-- TrailBase (`curl -sSL https://trailbase.io/install.sh | bash`)
+- Docker & Docker Compose
 
 ### Setup
 
-1. **Backend:**
+1. **Start PocketBase:**
    ```bash
-   cd backend
-   trail run --dev
+   docker compose up -d
    ```
 
-   Note: The `--dev` flag enables permissive CORS for local development with the Vite dev server.
+2. **Configure PocketBase:**
+   - Open http://localhost:8090/_/
+   - Create admin account
+   - Follow setup instructions in `scripts/setup-pocketbase.md`
 
-2. **Frontend:**
+3. **Install frontend dependencies:**
    ```bash
    cd frontend
-   pnpm install
-   pnpm dev
+   npm install
    ```
 
-3. **Access:**
-   - Frontend (dev): http://localhost:5173
-   - Backend API: http://localhost:4000
-   - TrailBase Admin: http://localhost:4000/_/admin/
+4. **Start development server:**
+   ```bash
+   npm run dev
+   ```
+
+5. **Access:**
+   - Frontend: http://localhost:5173
+   - PocketBase Admin: http://localhost:8090/_/
+   - PocketBase API: http://localhost:8090/api/
 
 ### Project Structure
 
 ```
 interne/
-├── backend/
-│   └── migrations/    # Database schema migrations
-├── frontend/          # Vite React app
+├── docker-compose.yml    # PocketBase container config
+├── frontend/             # Vite React app
 │   ├── src/
 │   │   ├── components/
 │   │   ├── hooks/
@@ -68,47 +74,51 @@ interne/
 │   │   ├── types/
 │   │   └── utils/
 │   └── package.json
-├── traildepot/        # TrailBase runtime data (created on first run)
-├── Dockerfile
-└── docker-compose.yml
+├── pb_data/              # PocketBase data (gitignored)
+└── scripts/
+    └── setup-pocketbase.md
 ```
 
 ## Deployment
 
 ### Docker
 
-1. **Build:**
+1. **Update PocketBase URL** in production:
    ```bash
-   docker-compose build
+   # Set in frontend/.env.production
+   VITE_POCKETBASE_URL=https://your-domain.com
    ```
 
-2. **Run:**
+2. **Build frontend:**
    ```bash
-   docker-compose up -d
+   cd frontend
+   npm run build
    ```
 
-3. **Access:**
-   - App: http://localhost:4000
+3. **Run with Docker Compose:**
+   ```bash
+   docker compose up -d
+   ```
+
+4. **Serve frontend** with your preferred static file server (nginx, Caddy, etc.)
 
 ### VPS Deployment
 
 1. Transfer files to VPS
-2. Run `docker-compose up -d`
-3. Configure reverse proxy (nginx) for HTTPS
-4. Point domain to server
+2. Configure reverse proxy for both PocketBase API and frontend
+3. Point domain to server
+4. Configure HTTPS with Let's Encrypt
 
 ### Backups
 
-The TrailBase data directory contains the SQLite database and configuration:
+PocketBase stores all data in the `pb_data` directory:
 
 ```bash
-# Backup the entire traildepot directory
-tar -czf backup-$(date +%Y%m%d).tar.gz traildepot/
-```
+# Backup the entire pb_data directory
+tar -czf backup-$(date +%Y%m%d).tar.gz pb_data/
 
-Or copy just the database:
-```bash
-docker-compose exec interne cp /app/traildepot/main.db /app/traildepot/backup.db
+# Or just the database
+docker compose exec pocketbase cp /pb_data/data.db /pb_data/backup.db
 ```
 
 ## License
