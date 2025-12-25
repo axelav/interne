@@ -1,13 +1,31 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as authService from "../services/auth";
-import type { LoginCredentials, RegisterCredentials } from "../types/user";
+import type { LoginCredentials, RegisterCredentials, User } from "../types/user";
 
 export function useCurrentUser() {
-  return useQuery({
-    queryKey: ["user"],
-    queryFn: authService.getCurrentUser,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-  });
+  const [user, setUser] = useState<User | null>(authService.getCurrentUser);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    // Initial check is synchronous with PocketBase authStore
+    setUser(authService.getCurrentUser());
+    setIsLoading(false);
+
+    // Subscribe to auth changes
+    const unsubscribe = authService.onAuthChange((newUser) => {
+      setUser(newUser);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  return {
+    data: user,
+    isLoading,
+    isError: false,
+    error: null,
+  };
 }
 
 export function useLogin() {
@@ -17,8 +35,8 @@ export function useLogin() {
     mutationFn: (credentials: LoginCredentials) =>
       authService.login(credentials),
     onSuccess: () => {
-      // Invalidate user query to trigger refetch with new auth token
-      queryClient.invalidateQueries({ queryKey: ["user"] });
+      // Invalidate entries query since they're user-specific
+      queryClient.invalidateQueries({ queryKey: ["entries"] });
     },
   });
 }
@@ -30,8 +48,8 @@ export function useRegister() {
     mutationFn: (credentials: RegisterCredentials) =>
       authService.register(credentials),
     onSuccess: () => {
-      // Invalidate user query to trigger refetch with new auth token
-      queryClient.invalidateQueries({ queryKey: ["user"] });
+      // Invalidate entries query since they're user-specific
+      queryClient.invalidateQueries({ queryKey: ["entries"] });
     },
   });
 }
@@ -42,7 +60,7 @@ export function useLogout() {
   return useMutation({
     mutationFn: authService.logout,
     onSuccess: () => {
-      queryClient.setQueryData(["user"], null);
+      // Clear all cached data on logout
       queryClient.clear();
     },
   });
