@@ -1,33 +1,29 @@
 import type { Entry, CreateEntryInput, UpdateEntryInput } from "../types/entry";
-import type { ListResponse } from "../types/api";
-import { trailbase } from "./trailbase";
+import { pb } from "./pocketbase";
 
 export async function fetchEntries(): Promise<Entry[]> {
-  const response = await trailbase.request<ListResponse<Entry>>(
-    "/records/v1/entries",
-  );
-  return response.data;
+  return pb.collection('entries').getFullList<Entry>({
+    sort: '-created',
+  });
 }
 
 export async function createEntry(input: CreateEntryInput): Promise<Entry> {
-  return trailbase.request<Entry>("/records/v1/entries", {
-    method: "POST",
-    body: JSON.stringify(input),
+  const user = pb.authStore.model;
+  if (!user) {
+    throw new Error('Must be logged in to create entries');
+  }
+
+  return pb.collection('entries').create<Entry>({
+    ...input,
+    user: user.id,
+    visited: 0,
   });
 }
 
-export async function updateEntry(
-  id: string,
-  updates: UpdateEntryInput,
-): Promise<Entry> {
-  return trailbase.request<Entry>(`/records/v1/entries/${id}`, {
-    method: "PATCH",
-    body: JSON.stringify(updates),
-  });
+export async function updateEntry(id: string, updates: UpdateEntryInput): Promise<Entry> {
+  return pb.collection('entries').update<Entry>(id, updates);
 }
 
 export async function deleteEntry(id: string): Promise<void> {
-  await trailbase.request<void>(`/records/v1/entries/${id}`, {
-    method: "DELETE",
-  });
+  await pb.collection('entries').delete(id);
 }
