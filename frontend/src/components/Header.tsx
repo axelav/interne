@@ -76,7 +76,7 @@ export default function Header({
   return (
     <header className={styles.header}>
       <h1 className={styles.title}>
-        <a href="/">{toTitleCase(packageData.name)}</a>
+        <a href="/">interne</a>
       </h1>
 
       {!!mode && (
