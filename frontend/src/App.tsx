@@ -97,6 +97,7 @@ function AppContent() {
         id: entry.id,
         updates: {
           dismissed: new Date().toISOString(),
+          visited: (entry.visited || 0) + 1,
         },
       });
     }, 200);
@@ -194,7 +195,9 @@ function AppContent() {
                       {!x.visible && x.nextAvailable && (
                         <span>
                           Available{" "}
-                          {getRelativeTimeFromNow(x.nextAvailable.toISOString())}
+                          {getRelativeTimeFromNow(
+                            x.nextAvailable.toISOString(),
+                          )}
                         </span>
                       )}
                     </div>
