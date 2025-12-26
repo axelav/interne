@@ -5,7 +5,8 @@ export default function Footer() {
   return (
     <footer className={styles.footer}>
       <div>v{packageData.version}</div>
-      <a href="/data">Import/Export Data</a>
+      {/* TODO: we lost this bit when we added the db - it needs a refactor anyway */}
+      {/* <a href="/data">Import/Export Data</a> */}
       <a href="https://honkytonk.in" target="_blank" rel="noopener noreferrer">
         Powered by honkytonkin'
       </a>
