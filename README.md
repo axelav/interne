@@ -14,12 +14,14 @@ A spaced-repetition bookmark manager that resurfaces saved websites after config
 ## Tech Stack
 
 **Backend:**
+
 - PocketBase (Go + SQLite)
 - Built-in authentication
 - Auto-generated REST APIs
 - Admin UI for database management
 
 **Frontend:**
+
 - Vite + React 18 + TypeScript
 - React Query for server state
 - PocketBase JavaScript SDK
@@ -36,30 +38,33 @@ A spaced-repetition bookmark manager that resurfaces saved websites after config
 ### Setup
 
 1. **Start PocketBase:**
+
    ```bash
    docker compose up -d
    ```
 
 2. **Configure PocketBase:**
-   - Open http://localhost:8090/_/
+   - Open <http://localhost:8090/\_/>
    - Create admin account
    - Follow setup instructions in `scripts/setup-pocketbase.md`
 
 3. **Install frontend dependencies:**
+
    ```bash
    cd frontend
    pnpm install
    ```
 
 4. **Start development server:**
+
    ```bash
    pnpm dev
    ```
 
 5. **Access:**
-   - Frontend: http://localhost:5173
-   - PocketBase Admin: http://localhost:8090/_/
-   - PocketBase API: http://localhost:8090/api/
+   - Frontend: <http://localhost:5173>
+   - PocketBase Admin: <http://localhost:8090/\_/>
+   - PocketBase API: <http://localhost:8090/api/>
 
 ### Project Structure
 
@@ -85,18 +90,21 @@ interne/
 ### Docker
 
 1. **Update PocketBase URL** in production:
+
    ```bash
    # Set in frontend/.env.production
    VITE_POCKETBASE_URL=https://your-domain.com
    ```
 
 2. **Build frontend:**
+
    ```bash
    cd frontend
    pnpm build
    ```
 
 3. **Run with Docker Compose:**
+
    ```bash
    docker compose up -d
    ```

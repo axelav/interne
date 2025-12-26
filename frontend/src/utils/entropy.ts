@@ -22,7 +22,7 @@ export const getAvailableAtPlusEntropy = ({
   const { entropy } = opts;
 
   const nextAvailable = dismissed
-    ? getDate(dismissed).add(duration, interval as any)
+    ? getDate(dismissed).add(duration, interval)
     : now.subtract(1, "seconds");
 
   const diff = nextAvailable.diff(now);

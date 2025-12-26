@@ -3,7 +3,7 @@
 ## First-time Setup
 
 1. Start PocketBase: `docker compose up -d`
-2. Open admin UI: http://localhost:8090/_/
+2. Open admin UI: <http://localhost:8090/\_/>
 3. Create admin account
 
 ## Create Entries Collection
