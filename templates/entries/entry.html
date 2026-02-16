@@ -1,7 +1,8 @@
 <div class="entry {% if !entry.is_available %}unavailable{% endif %}" id="entry-{{ entry.id }}">
     <div class="entry-header">
         <div class="entry-title">
-            <a href="{{ entry.url }}" target="_blank" rel="noopener noreferrer">
+            <a href="{{ entry.url }}" target="_blank" rel="noopener noreferrer"
+                onclick="fetch('/entries/{{ entry.id }}/visit',{method:'POST'}).then(r=>r.text()).then(h=>{let el=document.getElementById('entry-{{ entry.id }}');if(el)el.outerHTML=h})">
                 {{ entry.title }} &rarr;
             </a>
         </div>
@@ -18,6 +19,11 @@
             <a href="/entries/{{ entry.id }}/edit">Edit</a>
         </div>
     </div>
+    {% if let Some(desc) = entry.description.as_ref() %}
+        {% if !desc.is_empty() %}
+        <div class="entry-description">{{ desc }}</div>
+        {% endif %}
+    {% endif %}
     <div class="entry-meta">
         {% match entry.last_viewed %}
             {% when Some with (viewed) %}
