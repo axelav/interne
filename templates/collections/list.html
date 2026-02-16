@@ -7,12 +7,12 @@
 {% endblock %}
 
 {% block content %}
-<h1 style="font-size: 1.25rem; margin-bottom: 1.5rem;">Collections</h1>
+<h1 class="page-heading">Collections</h1>
 
-<div style="margin-bottom: 2rem;">
-    <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Join a Collection</h2>
-    <form method="post" action="/collections/join" style="display: flex; gap: 0.5rem;">
-        <input type="text" name="invite_code" placeholder="Invite code" required style="flex: 1;">
+<div class="join-form">
+    <h2 class="section-heading">Join a Collection</h2>
+    <form method="post" action="/collections/join" class="inline-form">
+        <input type="text" name="invite_code" placeholder="Invite code" required>
         <button type="submit">Join</button>
     </form>
 </div>
