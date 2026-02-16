@@ -137,12 +137,12 @@ pub fn router() -> Router<AppState> {
         .route("/entries/{id}/visit", post(visit_entry))
 }
 
-fn calculate_availability(entry: &Entry) -> (bool, Option<String>) {
+fn calculate_availability(entry: &Entry, now: DateTime<Utc>) -> (bool, Option<String>) {
     let Some(dismissed_at) = &entry.dismissed_at else {
         return (true, None);
     };
 
-    let dismissed: DateTime<Utc> = dismissed_at.parse().unwrap_or_else(|_| Utc::now());
+    let dismissed: DateTime<Utc> = dismissed_at.parse().unwrap_or(now);
 
     let duration = match entry.interval {
         Interval::Hours => Duration::hours(entry.duration),
@@ -153,37 +153,84 @@ fn calculate_availability(entry: &Entry) -> (bool, Option<String>) {
     };
 
     let available_at = dismissed + duration;
-    let now = Utc::now();
 
     if now >= available_at {
         (true, None)
     } else {
         let diff = available_at - now;
         let available_in = if diff.num_days() > 0 {
-            format!("in {} days", diff.num_days())
+            let d = diff.num_days();
+            if d == 1 {
+                "in 1 day".to_string()
+            } else {
+                format!("in {} days", d)
+            }
         } else if diff.num_hours() > 0 {
-            format!("in {} hours", diff.num_hours())
+            let h = diff.num_hours();
+            if h == 1 {
+                "in 1 hour".to_string()
+            } else {
+                format!("in {} hours", h)
+            }
         } else {
-            format!("in {} minutes", diff.num_minutes())
+            let m = diff.num_minutes();
+            if m == 1 {
+                "in 1 minute".to_string()
+            } else {
+                format!("in {} minutes", m)
+            }
         };
         (false, Some(available_in))
     }
 }
 
-fn format_last_viewed(dismissed_at: &Option<String>) -> Option<String> {
+fn format_last_viewed(dismissed_at: &Option<String>, now: DateTime<Utc>) -> Option<String> {
     let dismissed_at = dismissed_at.as_ref()?;
     let dismissed: DateTime<Utc> = dismissed_at.parse().ok()?;
-    let now = Utc::now();
     let diff = now - dismissed;
 
     Some(if diff.num_days() > 365 {
-        format!("{} years ago", diff.num_days() / 365)
+        let y = diff.num_days() / 365;
+        if y == 1 {
+            "1 year ago".to_string()
+        } else {
+            format!("{} years ago", y)
+        }
     } else if diff.num_days() > 30 {
-        format!("{} months ago", diff.num_days() / 30)
+        let m = diff.num_days() / 30;
+        if m == 1 {
+            "1 month ago".to_string()
+        } else {
+            format!("{} months ago", m)
+        }
+    } else if diff.num_days() > 7 {
+        let w = diff.num_days() / 7;
+        if w == 1 {
+            "1 week ago".to_string()
+        } else {
+            format!("{} weeks ago", w)
+        }
     } else if diff.num_days() > 0 {
-        format!("{} days ago", diff.num_days())
+        let d = diff.num_days();
+        if d == 1 {
+            "1 day ago".to_string()
+        } else {
+            format!("{} days ago", d)
+        }
     } else if diff.num_hours() > 0 {
-        format!("{} hours ago", diff.num_hours())
+        let h = diff.num_hours();
+        if h == 1 {
+            "1 hour ago".to_string()
+        } else {
+            format!("{} hours ago", h)
+        }
+    } else if diff.num_minutes() > 0 {
+        let m = diff.num_minutes();
+        if m == 1 {
+            "1 minute ago".to_string()
+        } else {
+            format!("{} minutes ago", m)
+        }
     } else {
         "just now".to_string()
     })
@@ -217,10 +264,11 @@ async fn list_entries(
 ) -> Result<impl IntoResponse, AppError> {
     let entries = fetch_entries_for_user(&state.db, &user.id).await;
 
+    let now = Utc::now();
     let entry_views: Vec<EntryView> = entries
         .into_iter()
         .filter_map(|(entry, visit_count)| {
-            let (is_available, available_in) = calculate_availability(&entry);
+            let (is_available, available_in) = calculate_availability(&entry, now);
             if !is_available {
                 return None;
             }
@@ -229,7 +277,7 @@ async fn list_entries(
                 url: entry.url,
                 title: entry.title,
                 description: entry.description,
-                last_viewed: format_last_viewed(&entry.dismissed_at),
+                last_viewed: format_last_viewed(&entry.dismissed_at, now),
                 available_in,
                 is_available,
                 visit_count,
@@ -252,16 +300,17 @@ async fn list_all_entries(
 ) -> Result<impl IntoResponse, AppError> {
     let entries = fetch_entries_for_user(&state.db, &user.id).await;
 
+    let now = Utc::now();
     let entry_views: Vec<EntryView> = entries
         .into_iter()
         .map(|(entry, visit_count)| {
-            let (is_available, available_in) = calculate_availability(&entry);
+            let (is_available, available_in) = calculate_availability(&entry, now);
             EntryView {
                 id: entry.id,
                 url: entry.url,
                 title: entry.title,
                 description: entry.description,
-                last_viewed: format_last_viewed(&entry.dismissed_at),
+                last_viewed: format_last_viewed(&entry.dismissed_at, now),
                 available_in,
                 is_available,
                 visit_count,
@@ -331,7 +380,8 @@ async fn visit_entry(
         .fetch_one(&state.db)
         .await?;
 
-    let (is_available, available_in) = calculate_availability(&entry);
+    let now_dt = Utc::now();
+    let (is_available, available_in) = calculate_availability(&entry, now_dt);
 
     let template = EntryTemplate {
         entry: EntryView {
@@ -339,7 +389,7 @@ async fn visit_entry(
             url: entry.url,
             title: entry.title,
             description: entry.description,
-            last_viewed: format_last_viewed(&entry.dismissed_at),
+            last_viewed: format_last_viewed(&entry.dismissed_at, now_dt),
             available_in,
             is_available,
             visit_count: visit_count.0,
