@@ -56,7 +56,8 @@ async fn login_submit(
 
     match user {
         Some(user) => {
-            login_user(&session, user).await?;
+            session.cycle_id().await?;
+            login_user(&session, &user).await?;
             Ok(Redirect::to("/").into_response())
         }
         None => {

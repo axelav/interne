@@ -12,7 +12,7 @@ use std::net::SocketAddr;
 use time::Duration;
 use tokio::net::TcpListener;
 use tower_http::services::ServeDir;
-use tower_sessions::{Expiry, SessionManagerLayer};
+use tower_sessions::{cookie::SameSite, Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::SqliteStore;
 
 async fn health() -> &'static str {
@@ -86,8 +86,13 @@ async fn main() {
     let session_store = SqliteStore::new(pool.clone());
     session_store.migrate().await.expect("Failed to migrate session store");
 
+    let secure = env::var("SECURE_COOKIES").unwrap_or_else(|_| "true".to_string()) == "true";
+
     let session_layer = SessionManagerLayer::new(session_store)
-        .with_expiry(Expiry::OnInactivity(Duration::days(30)));
+        .with_expiry(Expiry::OnInactivity(Duration::days(30)))
+        .with_secure(secure)
+        .with_http_only(true)
+        .with_same_site(SameSite::Lax);
 
     let state = AppState { db: pool };
 
