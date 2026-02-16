@@ -1,6 +1,7 @@
 mod auth;
 mod db;
 mod models;
+mod routes;
 
 use axum::{routing::get, Router};
 use sqlx::SqlitePool;
@@ -41,6 +42,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(health))
+        .merge(routes::auth::router())
         .nest_service("/static", ServeDir::new("static"))
         .layer(session_layer)
         .with_state(state);

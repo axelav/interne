@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Interne{% endblock %}
+
+{% block content %}
+<div style="max-width: 300px; margin: 3rem auto;">
+    <h1 style="font-size: 1.25rem; margin-bottom: 1.5rem;">Login</h1>
+
+    <form method="post" action="/login">
+        <div class="form-group">
+            <label for="invite_code">Invite Code</label>
+            <input
+                type="text"
+                id="invite_code"
+                name="invite_code"
+                required
+                autofocus
+                autocomplete="off"
+            >
+            <div class="error-message">
+                {% if let Some(err) = error %}
+                    {{ err }}
+                {% endif %}
+            </div>
+        </div>
+
+        <button type="submit">Login</button>
+    </form>
+</div>
+{% endblock %}
