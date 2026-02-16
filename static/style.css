@@ -180,10 +180,6 @@ main {
 .form-page {
 }
 
-.form-page-narrow {
-    max-width: 400px;
-}
-
 .form-heading {
     font-size: 1rem;
     font-weight: 600;
