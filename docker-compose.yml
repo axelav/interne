@@ -1,0 +1,11 @@
+services:
+  interne:
+    build: .
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:/app/data/interne.db
+      - RUST_LOG=info
+    restart: unless-stopped
