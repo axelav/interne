@@ -9,6 +9,7 @@ use serde::Deserialize;
 use tower_sessions::Session;
 
 use crate::auth::{login_user, logout_user};
+use crate::error::AppError;
 use crate::models::User;
 use crate::AppState;
 
@@ -32,45 +33,44 @@ pub fn router() -> Router<AppState> {
         .route("/logout", post(logout))
 }
 
-async fn login_page() -> impl IntoResponse {
+async fn login_page() -> Result<impl IntoResponse, AppError> {
     let template = LoginTemplate {
         error: None,
 
         user: None,
     };
-    Html(template.render().unwrap())
+    Ok(Html(template.render()?))
 }
 
 async fn login_submit(
     State(state): State<AppState>,
     session: Session,
     Form(form): Form<LoginForm>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let user: Option<User> = sqlx::query_as(
         "SELECT * FROM users WHERE invite_code = ?"
     )
     .bind(&form.invite_code)
     .fetch_optional(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     match user {
         Some(user) => {
-            login_user(&session, user).await.unwrap();
-            Redirect::to("/").into_response()
+            login_user(&session, user).await?;
+            Ok(Redirect::to("/").into_response())
         }
         None => {
             let template = LoginTemplate {
                 error: Some("Invalid invite code".to_string()),
-        
+
                 user: None,
             };
-            Html(template.render().unwrap()).into_response()
+            Ok(Html(template.render()?).into_response())
         }
     }
 }
 
-async fn logout(session: Session) -> impl IntoResponse {
-    logout_user(&session).await.unwrap();
-    Redirect::to("/login")
+async fn logout(session: Session) -> Result<impl IntoResponse, AppError> {
+    logout_user(&session).await?;
+    Ok(Redirect::to("/login"))
 }

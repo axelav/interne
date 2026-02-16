@@ -10,6 +10,7 @@ use sqlx::FromRow;
 use std::collections::HashMap;
 
 use crate::auth::AuthUser;
+use crate::error::AppError;
 use crate::models::{Collection, CollectionMember, User};
 use crate::AppState;
 
@@ -102,7 +103,7 @@ pub fn router() -> Router<AppState> {
 async fn list_collections(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let collections: Vec<CollectionWithCount> = sqlx::query_as(
         r#"
         SELECT c.*, COUNT(DISTINCT cm.user_id) + 1 as member_count
@@ -137,24 +138,24 @@ async fn list_collections(
 
         user: Some(user),
     };
-    Html(template.render().unwrap())
+    Ok(Html(template.render()?))
 }
 
-async fn new_collection_form(AuthUser(user): AuthUser) -> impl IntoResponse {
+async fn new_collection_form(AuthUser(user): AuthUser) -> Result<impl IntoResponse, AppError> {
     let template = CollectionFormTemplate {
         collection: None,
         errors: HashMap::new(),
 
         user: Some(user),
     };
-    Html(template.render().unwrap())
+    Ok(Html(template.render()?))
 }
 
 async fn create_collection(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Form(form): Form<CollectionForm>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let collection = Collection::new(user.id, form.name);
 
     sqlx::query(
@@ -167,24 +168,22 @@ async fn create_collection(
     .bind(&collection.created_at)
     .bind(&collection.updated_at)
     .execute(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
-    Redirect::to("/collections")
+    Ok(Redirect::to("/collections"))
 }
 
 async fn join_collection(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Form(form): Form<JoinForm>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let collection: Option<Collection> = sqlx::query_as(
         "SELECT * FROM collections WHERE invite_code = ?"
     )
     .bind(&form.invite_code)
     .fetch_optional(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     if let Some(collection) = collection {
         let member = CollectionMember::new(collection.id, user.id);
@@ -195,18 +194,17 @@ async fn join_collection(
         .bind(&member.user_id)
         .bind(&member.joined_at)
         .execute(&state.db)
-        .await
-        .unwrap();
+        .await?;
     }
 
-    Redirect::to("/collections")
+    Ok(Redirect::to("/collections"))
 }
 
 async fn show_collection(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     // Verify user has access (owner or member)
     let collection: Option<Collection> = sqlx::query_as(
         r#"
@@ -220,11 +218,10 @@ async fn show_collection(
     .bind(&user.id)
     .bind(&user.id)
     .fetch_optional(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     let Some(collection) = collection else {
-        return Redirect::to("/collections").into_response();
+        return Ok(Redirect::to("/collections").into_response());
     };
 
     let members: Vec<User> = sqlx::query_as(
@@ -246,25 +243,24 @@ async fn show_collection(
 
         user: Some(user),
     };
-    Html(template.render().unwrap()).into_response()
+    Ok(Html(template.render()?).into_response())
 }
 
 async fn edit_collection_form(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let collection: Option<Collection> = sqlx::query_as(
         "SELECT * FROM collections WHERE id = ? AND owner_id = ?"
     )
     .bind(&id)
     .bind(&user.id)
     .fetch_optional(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     let Some(collection) = collection else {
-        return Redirect::to("/collections").into_response();
+        return Ok(Redirect::to("/collections").into_response());
     };
 
     let template = CollectionFormTemplate {
@@ -273,7 +269,7 @@ async fn edit_collection_form(
 
         user: Some(user),
     };
-    Html(template.render().unwrap()).into_response()
+    Ok(Html(template.render()?).into_response())
 }
 
 async fn update_collection(
@@ -281,7 +277,7 @@ async fn update_collection(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     Form(form): Form<CollectionForm>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query("UPDATE collections SET name = ?, updated_at = ? WHERE id = ? AND owner_id = ?")
@@ -290,32 +286,30 @@ async fn update_collection(
         .bind(&id)
         .bind(&user.id)
         .execute(&state.db)
-        .await
-        .unwrap();
+        .await?;
 
-    Redirect::to("/collections")
+    Ok(Redirect::to("/collections"))
 }
 
 async fn delete_collection(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     sqlx::query("DELETE FROM collections WHERE id = ? AND owner_id = ?")
         .bind(&id)
         .bind(&user.id)
         .execute(&state.db)
-        .await
-        .unwrap();
+        .await?;
 
-    ([("HX-Redirect", "/collections")], "")
+    Ok(([("HX-Redirect", "/collections")], ""))
 }
 
 async fn regenerate_invite(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let new_code = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -325,17 +319,16 @@ async fn regenerate_invite(
         .bind(&id)
         .bind(&user.id)
         .execute(&state.db)
-        .await
-        .unwrap();
+        .await?;
 
-    Redirect::to(&format!("/collections/{}", id))
+    Ok(Redirect::to(&format!("/collections/{}", id)))
 }
 
 async fn remove_member(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path((collection_id, member_id)): Path<(String, String)>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     // Verify user is owner
     let collection: Option<Collection> = sqlx::query_as(
         "SELECT * FROM collections WHERE id = ? AND owner_id = ?"
@@ -343,17 +336,15 @@ async fn remove_member(
     .bind(&collection_id)
     .bind(&user.id)
     .fetch_optional(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     if collection.is_some() {
         sqlx::query("DELETE FROM collection_members WHERE collection_id = ? AND user_id = ?")
             .bind(&collection_id)
             .bind(&member_id)
             .execute(&state.db)
-            .await
-            .unwrap();
+            .await?;
     }
 
-    Redirect::to(&format!("/collections/{}", collection_id))
+    Ok(Redirect::to(&format!("/collections/{}", collection_id)))
 }

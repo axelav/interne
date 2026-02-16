@@ -11,6 +11,7 @@ use sqlx::FromRow;
 use std::collections::HashMap;
 
 use crate::auth::AuthUser;
+use crate::error::AppError;
 use crate::models::{Collection, Entry, User, Visit};
 use crate::AppState;
 
@@ -191,7 +192,7 @@ async fn fetch_entries_for_user(db: &sqlx::SqlitePool, user_id: &str) -> Vec<(En
 async fn list_entries(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let entries = fetch_entries_for_user(&state.db, &user.id).await;
 
     let entry_views: Vec<EntryView> = entries
@@ -221,13 +222,13 @@ async fn list_entries(
         user_name: user.name.clone(),
         user: Some(user),
     };
-    Html(template.render().unwrap())
+    Ok(Html(template.render()?))
 }
 
 async fn list_all_entries(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let entries = fetch_entries_for_user(&state.db, &user.id).await;
 
     let entry_views: Vec<EntryView> = entries
@@ -254,14 +255,14 @@ async fn list_all_entries(
         user_name: user.name.clone(),
         user: Some(user),
     };
-    Html(template.render().unwrap())
+    Ok(Html(template.render()?))
 }
 
 async fn visit_entry(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     // Verify user has access to this entry
     let entry: Option<Entry> = sqlx::query_as(
         r#"
@@ -274,11 +275,10 @@ async fn visit_entry(
     .bind(&user.id)
     .bind(&user.id)
     .fetch_optional(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     let Some(mut entry) = entry else {
-        return Html("Entry not found".to_string()).into_response();
+        return Err(AppError::NotFound);
     };
 
     let now = Utc::now().to_rfc3339();
@@ -293,8 +293,7 @@ async fn visit_entry(
     .bind(&visit.user_id)
     .bind(&visit.visited_at)
     .execute(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     // Update entry dismissed_at
     sqlx::query("UPDATE entries SET dismissed_at = ?, updated_at = ? WHERE id = ?")
@@ -302,8 +301,7 @@ async fn visit_entry(
         .bind(&now)
         .bind(&id)
         .execute(&state.db)
-        .await
-        .unwrap();
+        .await?;
 
     // Update local entry for correct availability calculation
     entry.dismissed_at = Some(now);
@@ -311,8 +309,7 @@ async fn visit_entry(
     let visit_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM visits WHERE entry_id = ?")
         .bind(&id)
         .fetch_one(&state.db)
-        .await
-        .unwrap();
+        .await?;
 
     let (is_available, available_in) = calculate_availability(&entry);
 
@@ -328,13 +325,13 @@ async fn visit_entry(
             visit_count: visit_count.0,
         },
     };
-    Html(template.render().unwrap()).into_response()
+    Ok(Html(template.render()?))
 }
 
 async fn new_entry_form(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let collections: Vec<Collection> = sqlx::query_as(
         r#"
         SELECT c.* FROM collections c
@@ -356,14 +353,14 @@ async fn new_entry_form(
 
         user: Some(user),
     };
-    Html(template.render().unwrap())
+    Ok(Html(template.render()?))
 }
 
 async fn create_entry(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Form(form): Form<EntryForm>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let now = chrono::Utc::now().to_rfc3339();
     let id = uuid::Uuid::new_v4().to_string();
 
@@ -386,8 +383,7 @@ async fn create_entry(
     .bind(&now)
     .bind(&now)
     .execute(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     // Handle tags
     if let Some(tags) = form.tags {
@@ -396,8 +392,7 @@ async fn create_entry(
             let tag_id: Option<(String,)> = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
                 .bind(&tag_name)
                 .fetch_optional(&state.db)
-                .await
-                .unwrap();
+                .await?;
 
             let tag_id = match tag_id {
                 Some((id,)) => id,
@@ -408,8 +403,7 @@ async fn create_entry(
                         .bind(&tag_name)
                         .bind(&now)
                         .execute(&state.db)
-                        .await
-                        .unwrap();
+                        .await?;
                     new_id
                 }
             };
@@ -419,19 +413,18 @@ async fn create_entry(
                 .bind(&id)
                 .bind(&tag_id)
                 .execute(&state.db)
-                .await
-                .unwrap();
+                .await?;
         }
     }
 
-    Redirect::to("/").into_response()
+    Ok(Redirect::to("/").into_response())
 }
 
 async fn edit_entry_form(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     // Verify user has access to this entry
     let entry: Option<Entry> = sqlx::query_as(
         r#"
@@ -444,11 +437,10 @@ async fn edit_entry_form(
     .bind(&user.id)
     .bind(&user.id)
     .fetch_optional(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     let Some(entry) = entry else {
-        return Redirect::to("/").into_response();
+        return Ok(Redirect::to("/").into_response());
     };
 
     let collections: Vec<Collection> = sqlx::query_as(
@@ -482,7 +474,7 @@ async fn edit_entry_form(
 
         user: Some(user),
     };
-    Html(template.render().unwrap()).into_response()
+    Ok(Html(template.render()?).into_response())
 }
 
 async fn update_entry(
@@ -490,7 +482,7 @@ async fn update_entry(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     Form(form): Form<EntryForm>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     // Verify user has access to this entry
     let entry: Option<Entry> = sqlx::query_as(
         r#"
@@ -503,11 +495,10 @@ async fn update_entry(
     .bind(&user.id)
     .bind(&user.id)
     .fetch_optional(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     if entry.is_none() {
-        return Redirect::to("/").into_response();
+        return Ok(Redirect::to("/").into_response());
     }
 
     let now = chrono::Utc::now().to_rfc3339();
@@ -529,23 +520,20 @@ async fn update_entry(
     .bind(&now)
     .bind(&id)
     .execute(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     // Clear existing tags and re-add
     sqlx::query("DELETE FROM entry_tags WHERE entry_id = ?")
         .bind(&id)
         .execute(&state.db)
-        .await
-        .unwrap();
+        .await?;
 
     if let Some(tags) = form.tags {
         for tag_name in tags.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()) {
             let tag_id: Option<(String,)> = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
                 .bind(&tag_name)
                 .fetch_optional(&state.db)
-                .await
-                .unwrap();
+                .await?;
 
             let tag_id = match tag_id {
                 Some((id,)) => id,
@@ -556,8 +544,7 @@ async fn update_entry(
                         .bind(&tag_name)
                         .bind(&now)
                         .execute(&state.db)
-                        .await
-                        .unwrap();
+                        .await?;
                     new_id
                 }
             };
@@ -566,19 +553,18 @@ async fn update_entry(
                 .bind(&id)
                 .bind(&tag_id)
                 .execute(&state.db)
-                .await
-                .unwrap();
+                .await?;
         }
     }
 
-    Redirect::to("/").into_response()
+    Ok(Redirect::to("/").into_response())
 }
 
 async fn delete_entry(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     // Verify user has access to this entry
     let entry: Option<Entry> = sqlx::query_as(
         r#"
@@ -591,19 +577,17 @@ async fn delete_entry(
     .bind(&user.id)
     .bind(&user.id)
     .fetch_optional(&state.db)
-    .await
-    .unwrap();
+    .await?;
 
     if entry.is_none() {
-        return ([("HX-Redirect", "/")], "").into_response();
+        return Ok(([("HX-Redirect", "/")], "").into_response());
     }
 
     sqlx::query("DELETE FROM entries WHERE id = ?")
         .bind(&id)
         .execute(&state.db)
-        .await
-        .unwrap();
+        .await?;
 
     // htmx expects empty response to remove element
-    ([("HX-Redirect", "/")], "").into_response()
+    Ok(([("HX-Redirect", "/")], "").into_response())
 }

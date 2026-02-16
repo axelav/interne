@@ -1,6 +1,7 @@
 mod auth;
 mod cli;
 mod db;
+mod error;
 mod models;
 mod routes;
 

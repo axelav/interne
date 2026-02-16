@@ -8,6 +8,7 @@ use axum::{
 use serde::Serialize;
 
 use crate::auth::AuthUser;
+use crate::error::AppError;
 use crate::models::Entry;
 use crate::AppState;
 
@@ -38,7 +39,7 @@ pub fn router() -> Router<AppState> {
 async fn export_data(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-) -> impl IntoResponse {
+) -> Result<impl IntoResponse, AppError> {
     let entries: Vec<Entry> = sqlx::query_as(
         "SELECT * FROM entries WHERE user_id = ? ORDER BY created_at"
     )
@@ -84,8 +85,8 @@ async fn export_data(
     headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(
         header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&content_disposition).unwrap(),
+        HeaderValue::from_str(&content_disposition).expect("date format produces valid header chars"),
     );
 
-    (headers, Json(export))
+    Ok((headers, Json(export)))
 }
