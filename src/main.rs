@@ -43,6 +43,7 @@ async fn main() {
     let app = Router::new()
         .route("/health", get(health))
         .merge(routes::auth::router())
+        .merge(routes::entries::router())
         .nest_service("/static", ServeDir::new("static"))
         .layer(session_layer)
         .with_state(state);

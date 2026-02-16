@@ -1,0 +1,32 @@
+<div class="entry {% if !entry.is_available %}unavailable{% endif %}" id="entry-{{ entry.id }}">
+    <div class="entry-header">
+        <div class="entry-title">
+            <a href="{{ entry.url }}" target="_blank" rel="noopener noreferrer">
+                {{ entry.title }} &rarr;
+            </a>
+        </div>
+        <div class="entry-actions">
+            {% if entry.is_available %}
+            <button
+                hx-post="/entries/{{ entry.id }}/visit"
+                hx-target="#entry-{{ entry.id }}"
+                hx-swap="outerHTML"
+            >
+                Mark Read
+            </button>
+            {% endif %}
+            <a href="/entries/{{ entry.id }}/edit">Edit</a>
+        </div>
+    </div>
+    <div class="entry-meta">
+        {% match entry.last_viewed %}
+            {% when Some with (viewed) %}
+                {{ viewed }}
+            {% when None %}
+                Never viewed
+        {% endmatch %}
+        {% if let Some(available) = entry.available_in %}
+            &middot; Available {{ available }}
+        {% endif %}
+    </div>
+</div>
