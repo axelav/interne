@@ -1,10 +1,14 @@
+mod auth;
 mod db;
 mod models;
 
 use axum::{routing::get, Router};
 use sqlx::SqlitePool;
 use std::net::SocketAddr;
+use time::Duration;
 use tokio::net::TcpListener;
+use tower_sessions::{Expiry, SessionManagerLayer};
+use tower_sessions_sqlx_store::SqliteStore;
 
 async fn health() -> &'static str {
     "ok"
@@ -25,10 +29,18 @@ async fn main() {
 
     let pool = db::init_pool(&database_url).await;
 
+    // Session store
+    let session_store = SqliteStore::new(pool.clone());
+    session_store.migrate().await.expect("Failed to migrate session store");
+
+    let session_layer = SessionManagerLayer::new(session_store)
+        .with_expiry(Expiry::OnInactivity(Duration::days(30)));
+
     let state = AppState { db: pool };
 
     let app = Router::new()
         .route("/health", get(health))
+        .layer(session_layer)
         .with_state(state);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
