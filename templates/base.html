@@ -15,6 +15,7 @@
                 {% block header_actions %}{% endblock %}
             </div>
             <nav>
+                <a href="/">Links</a>
                 <a href="/collections">Collections</a>
                 <span class="date" id="clock"></span>
             </nav>
@@ -50,6 +51,18 @@
     }
     tick();
     setInterval(tick, 5000);
+})();
+
+(function() {
+    var path = window.location.pathname;
+    var links = document.querySelectorAll('header nav a');
+    links.forEach(function(a) {
+        var href = a.getAttribute('href');
+        if ((href === '/' && (path === '/' || path === '/all')) ||
+            (href !== '/' && path.startsWith(href))) {
+            a.classList.add('active');
+        }
+    });
 })();
 </script>
 </body>
