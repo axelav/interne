@@ -696,3 +696,294 @@ async fn delete_entry(
     // htmx expects empty response to remove element
     Ok(([("HX-Redirect", "/")], "").into_response())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::Duration;
+
+    fn make_entry(duration: i64, interval: Interval, dismissed_at: Option<String>) -> Entry {
+        Entry {
+            id: "test-id".to_string(),
+            user_id: "test-user".to_string(),
+            collection_id: None,
+            url: "https://example.com".to_string(),
+            title: "Test".to_string(),
+            description: None,
+            duration,
+            interval,
+            dismissed_at,
+            created_at: "2025-01-01T00:00:00+00:00".to_string(),
+            updated_at: "2025-01-01T00:00:00+00:00".to_string(),
+        }
+    }
+
+    // --- calculate_availability ---
+
+    #[test]
+    fn availability_never_dismissed_is_available() {
+        let entry = make_entry(3, Interval::Days, None);
+        let now = Utc::now();
+        let (available, remaining) = calculate_availability(&entry, now);
+        assert!(available);
+        assert!(remaining.is_none());
+    }
+
+    #[test]
+    fn availability_just_dismissed_not_available() {
+        let now = Utc::now();
+        let dismissed = (now - Duration::seconds(1)).to_rfc3339();
+        let entry = make_entry(3, Interval::Days, Some(dismissed));
+        let (available, remaining) = calculate_availability(&entry, now);
+        assert!(!available);
+        assert!(remaining.is_some());
+        assert!(remaining.unwrap().starts_with("in "));
+    }
+
+    #[test]
+    fn availability_past_boundary_is_available() {
+        let now = Utc::now();
+        let dismissed = (now - Duration::days(4)).to_rfc3339();
+        let entry = make_entry(3, Interval::Days, Some(dismissed));
+        let (available, remaining) = calculate_availability(&entry, now);
+        assert!(available);
+        assert!(remaining.is_none());
+    }
+
+    #[test]
+    fn availability_exactly_at_boundary_is_available() {
+        let now = Utc::now();
+        let dismissed = (now - Duration::days(3)).to_rfc3339();
+        let entry = make_entry(3, Interval::Days, Some(dismissed));
+        let (available, remaining) = calculate_availability(&entry, now);
+        assert!(available);
+        assert!(remaining.is_none());
+    }
+
+    #[test]
+    fn availability_hours_interval() {
+        let now = Utc::now();
+        let dismissed = (now - Duration::hours(1)).to_rfc3339();
+        let entry = make_entry(2, Interval::Hours, Some(dismissed));
+        let (available, remaining) = calculate_availability(&entry, now);
+        assert!(!available);
+        assert_eq!(remaining.unwrap(), "in 1 hour");
+    }
+
+    #[test]
+    fn availability_weeks_interval() {
+        let now = Utc::now();
+        let dismissed = (now - Duration::weeks(1)).to_rfc3339();
+        let entry = make_entry(2, Interval::Weeks, Some(dismissed));
+        let (available, remaining) = calculate_availability(&entry, now);
+        assert!(!available);
+        assert_eq!(remaining.unwrap(), "in 7 days");
+    }
+
+    #[test]
+    fn availability_months_interval() {
+        let now = Utc::now();
+        let dismissed = (now - Duration::days(1)).to_rfc3339();
+        let entry = make_entry(1, Interval::Months, Some(dismissed));
+        let (available, remaining) = calculate_availability(&entry, now);
+        assert!(!available);
+        assert_eq!(remaining.unwrap(), "in 29 days");
+    }
+
+    #[test]
+    fn availability_years_interval() {
+        let now = Utc::now();
+        let dismissed = (now - Duration::days(1)).to_rfc3339();
+        let entry = make_entry(1, Interval::Years, Some(dismissed));
+        let (available, remaining) = calculate_availability(&entry, now);
+        assert!(!available);
+        assert!(remaining.unwrap().contains("days"));
+    }
+
+    #[test]
+    fn availability_singular_day() {
+        let now = Utc::now();
+        let dismissed = (now - Duration::days(2)).to_rfc3339();
+        let entry = make_entry(3, Interval::Days, Some(dismissed));
+        let (available, remaining) = calculate_availability(&entry, now);
+        assert!(!available);
+        assert_eq!(remaining.unwrap(), "in 1 day");
+    }
+
+    #[test]
+    fn availability_plural_days() {
+        let now = Utc::now();
+        let dismissed = now.to_rfc3339();
+        let entry = make_entry(3, Interval::Days, Some(dismissed));
+        let (available, remaining) = calculate_availability(&entry, now);
+        assert!(!available);
+        assert_eq!(remaining.unwrap(), "in 3 days");
+    }
+
+    // --- format_last_viewed ---
+
+    #[test]
+    fn last_viewed_none_returns_none() {
+        let now = Utc::now();
+        assert!(format_last_viewed(&None, now).is_none());
+    }
+
+    #[test]
+    fn last_viewed_just_now() {
+        let now = Utc::now();
+        let dismissed = Some(now.to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "just now");
+    }
+
+    #[test]
+    fn last_viewed_singular_minute() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::minutes(1)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "1 minute ago");
+    }
+
+    #[test]
+    fn last_viewed_plural_minutes() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::minutes(45)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "45 minutes ago");
+    }
+
+    #[test]
+    fn last_viewed_singular_hour() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::hours(1)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "1 hour ago");
+    }
+
+    #[test]
+    fn last_viewed_plural_hours() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::hours(5)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "5 hours ago");
+    }
+
+    #[test]
+    fn last_viewed_singular_day() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::days(1)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "1 day ago");
+    }
+
+    #[test]
+    fn last_viewed_plural_days() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::days(5)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "5 days ago");
+    }
+
+    #[test]
+    fn last_viewed_singular_week() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::days(8)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "1 week ago");
+    }
+
+    #[test]
+    fn last_viewed_plural_weeks() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::weeks(3)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "3 weeks ago");
+    }
+
+    #[test]
+    fn last_viewed_singular_month() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::days(31)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "1 month ago");
+    }
+
+    #[test]
+    fn last_viewed_plural_months() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::days(90)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "3 months ago");
+    }
+
+    #[test]
+    fn last_viewed_singular_year() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::days(400)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "1 year ago");
+    }
+
+    #[test]
+    fn last_viewed_plural_years() {
+        let now = Utc::now();
+        let dismissed = Some((now - Duration::days(800)).to_rfc3339());
+        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "2 years ago");
+    }
+
+    // --- validate_entry_form ---
+
+    fn make_valid_entry_form() -> EntryForm {
+        EntryForm {
+            url: "https://example.com".to_string(),
+            title: "Test Title".to_string(),
+            description: None,
+            duration: 3,
+            interval: Interval::Days,
+            tags: None,
+            collection_id: None,
+        }
+    }
+
+    #[test]
+    fn entry_form_valid() {
+        let form = make_valid_entry_form();
+        assert!(validate_entry_form(&form).is_empty());
+    }
+
+    #[test]
+    fn entry_form_empty_title() {
+        let mut form = make_valid_entry_form();
+        form.title = "   ".to_string();
+        let errors = validate_entry_form(&form);
+        assert!(errors.contains_key("title"));
+    }
+
+    #[test]
+    fn entry_form_title_too_long() {
+        let mut form = make_valid_entry_form();
+        form.title = "a".repeat(501);
+        let errors = validate_entry_form(&form);
+        assert!(errors.contains_key("title"));
+    }
+
+    #[test]
+    fn entry_form_bad_url_scheme() {
+        let mut form = make_valid_entry_form();
+        form.url = "ftp://example.com".to_string();
+        let errors = validate_entry_form(&form);
+        assert!(errors.contains_key("url"));
+    }
+
+    #[test]
+    fn entry_form_empty_url_allowed() {
+        let mut form = make_valid_entry_form();
+        form.url = "".to_string();
+        let errors = validate_entry_form(&form);
+        assert!(!errors.contains_key("url"));
+    }
+
+    #[test]
+    fn entry_form_duration_zero() {
+        let mut form = make_valid_entry_form();
+        form.duration = 0;
+        let errors = validate_entry_form(&form);
+        assert!(errors.contains_key("duration"));
+    }
+
+    #[test]
+    fn entry_form_negative_duration() {
+        let mut form = make_valid_entry_form();
+        form.duration = -1;
+        let errors = validate_entry_form(&form);
+        assert!(errors.contains_key("duration"));
+    }
+}
