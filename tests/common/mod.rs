@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use axum::body::Body;
 use http_body_util::BodyExt;
 use axum::http::{Request, StatusCode};
