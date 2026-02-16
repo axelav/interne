@@ -101,6 +101,30 @@ pub struct EntryForm {
     collection_id: Option<String>,
 }
 
+fn validate_entry_form(form: &EntryForm) -> HashMap<String, String> {
+    let mut errors = HashMap::new();
+
+    if form.duration < 1 {
+        errors.insert("duration".to_string(), "Duration must be at least 1".to_string());
+    }
+
+    if !form.url.is_empty() {
+        if !form.url.starts_with("http://") && !form.url.starts_with("https://") {
+            errors.insert("url".to_string(), "URL must start with http:// or https://".to_string());
+        }
+    }
+
+    if form.title.trim().is_empty() {
+        errors.insert("title".to_string(), "Title is required".to_string());
+    }
+
+    if form.title.len() > 500 {
+        errors.insert("title".to_string(), "Title must be under 500 characters".to_string());
+    }
+
+    errors
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_entries))
@@ -357,6 +381,31 @@ async fn create_entry(
     AuthUser(user): AuthUser,
     Form(form): Form<EntryForm>,
 ) -> Result<impl IntoResponse, AppError> {
+    let errors = validate_entry_form(&form);
+    if !errors.is_empty() {
+        let collections: Vec<Collection> = sqlx::query_as(
+            r#"
+            SELECT c.* FROM collections c
+            LEFT JOIN collection_members cm ON cm.collection_id = c.id
+            WHERE c.owner_id = ? OR cm.user_id = ?
+            "#
+        )
+        .bind(&user.id)
+        .bind(&user.id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+
+        let template = EntryFormTemplate {
+            entry: None,
+            collections,
+            tags_string: form.tags.as_deref().unwrap_or("").to_string(),
+            errors,
+            user: Some(user),
+        };
+        return Ok(Html(template.render()?).into_response());
+    }
+
     let now = chrono::Utc::now().to_rfc3339();
     let id = uuid::Uuid::new_v4().to_string();
 
@@ -493,8 +542,33 @@ async fn update_entry(
     .fetch_optional(&state.db)
     .await?;
 
-    if entry.is_none() {
+    let Some(entry) = entry else {
         return Ok(Redirect::to("/").into_response());
+    };
+
+    let errors = validate_entry_form(&form);
+    if !errors.is_empty() {
+        let collections: Vec<Collection> = sqlx::query_as(
+            r#"
+            SELECT c.* FROM collections c
+            LEFT JOIN collection_members cm ON cm.collection_id = c.id
+            WHERE c.owner_id = ? OR cm.user_id = ?
+            "#
+        )
+        .bind(&user.id)
+        .bind(&user.id)
+        .fetch_all(&state.db)
+        .await
+        .unwrap_or_default();
+
+        let template = EntryFormTemplate {
+            entry: Some(entry),
+            collections,
+            tags_string: form.tags.as_deref().unwrap_or("").to_string(),
+            errors,
+            user: Some(user),
+        };
+        return Ok(Html(template.render()?).into_response());
     }
 
     let now = chrono::Utc::now().to_rfc3339();

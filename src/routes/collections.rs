@@ -86,6 +86,20 @@ pub struct JoinForm {
     invite_code: String,
 }
 
+fn validate_collection_form(form: &CollectionForm) -> HashMap<String, String> {
+    let mut errors = HashMap::new();
+
+    if form.name.trim().is_empty() {
+        errors.insert("name".to_string(), "Name is required".to_string());
+    }
+
+    if form.name.len() > 100 {
+        errors.insert("name".to_string(), "Name must be under 100 characters".to_string());
+    }
+
+    errors
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/collections", get(list_collections))
@@ -156,6 +170,16 @@ async fn create_collection(
     AuthUser(user): AuthUser,
     Form(form): Form<CollectionForm>,
 ) -> Result<impl IntoResponse, AppError> {
+    let errors = validate_collection_form(&form);
+    if !errors.is_empty() {
+        let template = CollectionFormTemplate {
+            collection: None,
+            errors,
+            user: Some(user),
+        };
+        return Ok(Html(template.render()?).into_response());
+    }
+
     let collection = Collection::new(user.id, form.name);
 
     sqlx::query(
@@ -170,7 +194,7 @@ async fn create_collection(
     .execute(&state.db)
     .await?;
 
-    Ok(Redirect::to("/collections"))
+    Ok(Redirect::to("/collections").into_response())
 }
 
 async fn join_collection(
@@ -278,6 +302,24 @@ async fn update_collection(
     Path(id): Path<String>,
     Form(form): Form<CollectionForm>,
 ) -> Result<impl IntoResponse, AppError> {
+    let errors = validate_collection_form(&form);
+    if !errors.is_empty() {
+        let collection: Option<Collection> = sqlx::query_as(
+            "SELECT * FROM collections WHERE id = ? AND owner_id = ?"
+        )
+        .bind(&id)
+        .bind(&user.id)
+        .fetch_optional(&state.db)
+        .await?;
+
+        let template = CollectionFormTemplate {
+            collection,
+            errors,
+            user: Some(user),
+        };
+        return Ok(Html(template.render()?).into_response());
+    }
+
     let now = chrono::Utc::now().to_rfc3339();
 
     sqlx::query("UPDATE collections SET name = ?, updated_at = ? WHERE id = ? AND owner_id = ?")
@@ -288,7 +330,7 @@ async fn update_collection(
         .execute(&state.db)
         .await?;
 
-    Ok(Redirect::to("/collections"))
+    Ok(Redirect::to("/collections").into_response())
 }
 
 async fn delete_collection(
