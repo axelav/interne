@@ -407,5 +407,5 @@ async fn remove_member(
             .await?;
     }
 
-    Ok(Redirect::to(&format!("/collections/{}", collection_id)))
+    Ok(([("HX-Redirect", format!("/collections/{}", collection_id))], "").into_response())
 }

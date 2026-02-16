@@ -2,7 +2,11 @@
     <div class="entry-header">
         <div class="entry-title">
             <a href="{{ entry.url }}" target="_blank" rel="noopener noreferrer"
-                onclick="fetch('/entries/{{ entry.id }}/visit',{method:'POST'}).then(r=>r.text()).then(h=>{let el=document.getElementById('entry-{{ entry.id }}');if(el)el.outerHTML=h})">
+                hx-post="/entries/{{ entry.id }}/visit"
+                hx-target="#entry-{{ entry.id }}"
+                hx-swap="outerHTML"
+                hx-trigger="click"
+            >
                 {{ entry.title }} &rarr;
             </a>
         </div>
