@@ -45,6 +45,7 @@ async fn main() {
         .merge(routes::auth::router())
         .merge(routes::entries::router())
         .merge(routes::collections::router())
+        .merge(routes::export::router())
         .nest_service("/static", ServeDir::new("static"))
         .layer(session_layer)
         .with_state(state);
