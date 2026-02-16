@@ -4,11 +4,13 @@
 
 {% block header_actions %}
 <a
+    id="view-toggle"
     href="{% if filter == "available" %}/all{% else %}/{% endif %}"
     class="view-toggle"
     hx-get="{% if filter == "available" %}/all{% else %}/{% endif %}"
     hx-target="#entry-list"
     hx-select="#entry-list"
+    hx-select-oob="#view-toggle"
     hx-swap="outerHTML"
     hx-push-url="true"
 >
