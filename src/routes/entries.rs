@@ -470,16 +470,11 @@ async fn edit_entry_form(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Verify user has access to this entry
+    // Verify user owns this entry
     let entry: Option<Entry> = sqlx::query_as(
-        r#"
-        SELECT * FROM entries WHERE id = ? AND (user_id = ? OR collection_id IN (
-            SELECT collection_id FROM collection_members WHERE user_id = ?
-        ))
-        "#
+        "SELECT * FROM entries WHERE id = ? AND user_id = ?"
     )
     .bind(&id)
-    .bind(&user.id)
     .bind(&user.id)
     .fetch_optional(&state.db)
     .await?;
@@ -528,16 +523,11 @@ async fn update_entry(
     Path(id): Path<String>,
     Form(form): Form<EntryForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Verify user has access to this entry
+    // Verify user owns this entry
     let entry: Option<Entry> = sqlx::query_as(
-        r#"
-        SELECT * FROM entries WHERE id = ? AND (user_id = ? OR collection_id IN (
-            SELECT collection_id FROM collection_members WHERE user_id = ?
-        ))
-        "#
+        "SELECT * FROM entries WHERE id = ? AND user_id = ?"
     )
     .bind(&id)
-    .bind(&user.id)
     .bind(&user.id)
     .fetch_optional(&state.db)
     .await?;
@@ -635,16 +625,11 @@ async fn delete_entry(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Verify user has access to this entry
+    // Verify user owns this entry
     let entry: Option<Entry> = sqlx::query_as(
-        r#"
-        SELECT * FROM entries WHERE id = ? AND (user_id = ? OR collection_id IN (
-            SELECT collection_id FROM collection_members WHERE user_id = ?
-        ))
-        "#
+        "SELECT * FROM entries WHERE id = ? AND user_id = ?"
     )
     .bind(&id)
-    .bind(&user.id)
     .bind(&user.id)
     .fetch_optional(&state.db)
     .await?;

@@ -44,6 +44,15 @@
     {% endfor %}
 </div>
 
+{% if !is_owner %}
+<form method="post" action="/collections/{{ collection.id }}/leave" style="margin-top: 1rem;">
+    <button type="submit" class="link-button delete-button"
+        onclick="return confirm('Leave this collection?')">
+        Leave Collection
+    </button>
+</form>
+{% endif %}
+
 <p style="margin-top: 2rem;">
     <a href="/collections">&larr; Back to collections</a>
 </p>

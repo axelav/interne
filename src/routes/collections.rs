@@ -111,6 +111,7 @@ pub fn router() -> Router<AppState> {
         .route("/collections/{id}", post(update_collection))
         .route("/collections/{id}", delete(delete_collection))
         .route("/collections/{id}/regenerate-invite", post(regenerate_invite))
+        .route("/collections/{id}/leave", post(leave_collection))
         .route("/collections/{id}/members/{user_id}", delete(remove_member))
 }
 
@@ -210,6 +211,9 @@ async fn join_collection(
     .await?;
 
     if let Some(collection) = collection {
+        if collection.owner_id == user.id {
+            return Ok(Redirect::to("/collections"));
+        }
         let member = CollectionMember::new(collection.id, user.id);
         sqlx::query(
             "INSERT OR IGNORE INTO collection_members (collection_id, user_id, joined_at) VALUES (?, ?, ?)"
@@ -364,6 +368,21 @@ async fn regenerate_invite(
         .await?;
 
     Ok(Redirect::to(&format!("/collections/{}", id)))
+}
+
+async fn leave_collection(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    // Only members can leave (not owners)
+    sqlx::query("DELETE FROM collection_members WHERE collection_id = ? AND user_id = ?")
+        .bind(&id)
+        .bind(&user.id)
+        .execute(&state.db)
+        .await?;
+
+    Ok(Redirect::to("/collections"))
 }
 
 async fn remove_member(
