@@ -19,7 +19,7 @@ use crate::AppState;
 struct EntryListTemplate {
     entries: Vec<EntryView>,
     filter: String,
-    current_date: String,
+
     user_name: String,
     user: Option<User>,
 }
@@ -86,7 +86,7 @@ struct EntryFormTemplate {
     collections: Vec<Collection>,
     tags_string: String,
     errors: HashMap<String, String>,
-    current_date: String,
+
     user: Option<User>,
 }
 
@@ -217,7 +217,7 @@ async fn list_entries(
     let template = EntryListTemplate {
         entries: entry_views,
         filter: "available".to_string(),
-        current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+
         user_name: user.name.clone(),
         user: Some(user),
     };
@@ -250,7 +250,7 @@ async fn list_all_entries(
     let template = EntryListTemplate {
         entries: entry_views,
         filter: "all".to_string(),
-        current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+
         user_name: user.name.clone(),
         user: Some(user),
     };
@@ -353,7 +353,7 @@ async fn new_entry_form(
         collections,
         tags_string: String::new(),
         errors: HashMap::new(),
-        current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+
         user: Some(user),
     };
     Html(template.render().unwrap())
@@ -479,7 +479,7 @@ async fn edit_entry_form(
         collections,
         tags_string,
         errors: HashMap::new(),
-        current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+
         user: Some(user),
     };
     Html(template.render().unwrap()).into_response()

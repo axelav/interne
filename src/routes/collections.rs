@@ -17,7 +17,7 @@ use crate::AppState;
 #[template(path = "collections/list.html")]
 struct CollectionListTemplate {
     collections: Vec<CollectionView>,
-    current_date: String,
+
     user: Option<User>,
 }
 
@@ -26,7 +26,7 @@ struct CollectionListTemplate {
 struct CollectionFormTemplate {
     collection: Option<Collection>,
     errors: HashMap<String, String>,
-    current_date: String,
+
     user: Option<User>,
 }
 
@@ -36,7 +36,7 @@ struct CollectionShowTemplate {
     collection: Collection,
     members: Vec<User>,
     is_owner: bool,
-    current_date: String,
+
     user: Option<User>,
 }
 
@@ -134,7 +134,7 @@ async fn list_collections(
 
     let template = CollectionListTemplate {
         collections: views,
-        current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+
         user: Some(user),
     };
     Html(template.render().unwrap())
@@ -144,7 +144,7 @@ async fn new_collection_form(AuthUser(user): AuthUser) -> impl IntoResponse {
     let template = CollectionFormTemplate {
         collection: None,
         errors: HashMap::new(),
-        current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+
         user: Some(user),
     };
     Html(template.render().unwrap())
@@ -243,7 +243,7 @@ async fn show_collection(
         is_owner: collection.owner_id == user.id,
         collection,
         members,
-        current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+
         user: Some(user),
     };
     Html(template.render().unwrap()).into_response()
@@ -270,7 +270,7 @@ async fn edit_collection_form(
     let template = CollectionFormTemplate {
         collection: Some(collection),
         errors: HashMap::new(),
-        current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+
         user: Some(user),
     };
     Html(template.render().unwrap()).into_response()

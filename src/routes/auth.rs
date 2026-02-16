@@ -16,7 +16,7 @@ use crate::AppState;
 #[template(path = "login.html")]
 struct LoginTemplate {
     error: Option<String>,
-    current_date: String,
+
     user: Option<User>,
 }
 
@@ -35,7 +35,7 @@ pub fn router() -> Router<AppState> {
 async fn login_page() -> impl IntoResponse {
     let template = LoginTemplate {
         error: None,
-        current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+
         user: None,
     };
     Html(template.render().unwrap())
@@ -62,7 +62,7 @@ async fn login_submit(
         None => {
             let template = LoginTemplate {
                 error: Some("Invalid invite code".to_string()),
-                current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+        
                 user: None,
             };
             Html(template.render().unwrap()).into_response()
