@@ -36,27 +36,14 @@ body {
 
 /* Header */
 header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
     padding: 1.25rem 0;
     margin-bottom: 0.5rem;
 }
 
-.header-left {
+.header-top {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 1rem;
-}
-
-.header-left a {
-    color: var(--gray-600);
-    text-decoration: none;
-    font-size: 0.8125rem;
-}
-
-.header-left a:hover {
-    color: var(--black);
 }
 
 .logo {
@@ -64,17 +51,8 @@ header {
     font-size: 1.125rem;
     font-weight: 600;
     color: var(--black);
-    letter-spacing: -0.01em;
-}
-
-.view-toggle {
-    font-size: 0.8125rem;
-    color: var(--gray-600);
     text-decoration: none;
-}
-
-.view-toggle:hover {
-    color: var(--black);
+    letter-spacing: -0.01em;
 }
 
 header nav {
@@ -94,9 +72,47 @@ header nav a.active {
     color: var(--gray-600);
 }
 
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.view-toggle {
+    font-size: 0.8125rem;
+    color: var(--gray-600);
+    text-decoration: none;
+}
+
+.view-toggle:hover {
+    color: var(--black);
+}
+
 .date {
     font-size: 0.8125rem;
     color: var(--gray-400);
+}
+
+.header-actions {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+
+.header-actions a {
+    font-size: 0.8125rem;
+    color: var(--gray-600);
+    text-decoration: none;
+}
+
+.header-actions a:hover {
+    color: var(--black);
+}
+
+@media (max-width: 480px) {
+    .date {
+        display: none;
+    }
 }
 
 /* Main */

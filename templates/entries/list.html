@@ -2,7 +2,7 @@
 
 {% block title %}Interne{% endblock %}
 
-{% block header_actions %}
+{% block header_left %}
 <a
     id="view-toggle"
     href="{% if filter == "available" %}/all{% else %}/{% endif %}"
@@ -16,7 +16,12 @@
 >
     {% if filter == "available" %}View All{% else %}View Available{% endif %}
 </a>
-<a href="/entries/new">+ New Link</a>
+{% endblock %}
+
+{% block header_actions %}
+<div class="header-actions">
+    <a href="/entries/new">+ New Link</a>
+</div>
 {% endblock %}
 
 {% block content %}

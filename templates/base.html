@@ -10,15 +10,18 @@
 <body>
     <div class="container">
         <header>
-            <div class="header-left">
-                <a href="/" class="logo">Interne</a>
-                {% block header_actions %}{% endblock %}
+            <div class="header-top">
+                <div class="header-left">
+                    <a href="/" class="logo">Interne</a>
+                    {% block header_left %}{% endblock %}
+                </div>
+                <nav>
+                    <a href="/">Links</a>
+                    <a href="/collections">Collections</a>
+                    <span class="date" id="clock"></span>
+                </nav>
             </div>
-            <nav>
-                <a href="/">Links</a>
-                <a href="/collections">Collections</a>
-                <span class="date" id="clock"></span>
-            </nav>
+            {% block header_actions %}{% endblock %}
         </header>
 
         <main>
@@ -40,7 +43,7 @@
     var el = document.getElementById('clock');
     function tick() {
         var d = new Date();
-        var month = d.toLocaleString('en-US', { month: 'long' });
+        var month = d.toLocaleString('en-US', { month: 'short' });
         var day = d.getDate();
         var h = d.getHours();
         var m = d.getMinutes();
