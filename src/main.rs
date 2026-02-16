@@ -7,6 +7,7 @@ use sqlx::SqlitePool;
 use std::net::SocketAddr;
 use time::Duration;
 use tokio::net::TcpListener;
+use tower_http::services::ServeDir;
 use tower_sessions::{Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::SqliteStore;
 
@@ -40,6 +41,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/health", get(health))
+        .nest_service("/static", ServeDir::new("static"))
         .layer(session_layer)
         .with_state(state);
 
