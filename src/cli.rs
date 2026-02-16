@@ -58,6 +58,7 @@ pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> R
 
     let now = chrono::Utc::now().to_rfc3339();
     let mut imported = 0;
+    let mut tx = pool.begin().await?;
 
     for entry in entries {
         let id = Uuid::new_v4().to_string();
@@ -93,7 +94,7 @@ pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> R
         .bind(&entry.dismissed_at)
         .bind(&created_at)
         .bind(&updated_at)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
         // Create visit records for visited count
@@ -107,7 +108,7 @@ pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> R
                 .bind(&id)
                 .bind(user_id)
                 .bind(&now)
-                .execute(pool)
+                .execute(&mut *tx)
                 .await?;
             }
         }
@@ -115,6 +116,7 @@ pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> R
         imported += 1;
     }
 
+    tx.commit().await?;
     println!("Imported {} entries", imported);
     Ok(())
 }
