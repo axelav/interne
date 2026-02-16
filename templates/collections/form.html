@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}{% if collection.is_some() %}Edit{% else %}New{% endif %} Collection - Interne{% endblock %}
+
+{% block content %}
+<div style="max-width: 400px;">
+    <h1 style="font-size: 1.25rem; margin-bottom: 1.5rem;">
+        {% if collection.is_some() %}Edit Collection{% else %}New Collection{% endif %}
+    </h1>
+
+    <form method="post" action="{% if let Some(c) = collection %}/collections/{{ c.id }}{% else %}/collections{% endif %}">
+        <div class="form-group">
+            <label for="name">Name</label>
+            <input
+                type="text"
+                id="name"
+                name="name"
+                required
+                autofocus
+                value="{% if let Some(c) = collection %}{{ c.name }}{% endif %}"
+            >
+            <div class="error-message">{% if let Some(err) = errors.get("name") %}{{ err }}{% endif %}</div>
+        </div>
+
+        <div style="display: flex; gap: 1rem; align-items: center;">
+            <button type="submit">Save</button>
+            <a href="/collections">Cancel</a>
+            {% if collection.is_some() %}
+            <button
+                type="button"
+                class="link-button"
+                style="margin-left: auto; color: red;"
+                hx-delete="/collections/{{ collection.as_ref().unwrap().id }}"
+                hx-confirm="Delete this collection? All entries will become private."
+            >
+                Delete
+            </button>
+            {% endif %}
+        </div>
+    </form>
+</div>
+{% endblock %}

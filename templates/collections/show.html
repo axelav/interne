@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}{{ collection.name }} - Interne{% endblock %}
+
+{% block content %}
+<div style="margin-bottom: 2rem;">
+    <h1 style="font-size: 1.25rem; margin-bottom: 0.5rem;">{{ collection.name }}</h1>
+
+    {% if is_owner %}
+    <div style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #eee;">
+        <strong>Invite Code:</strong>
+        <code style="background: #f5f5f5; padding: 0.25rem 0.5rem;">{{ collection.invite_code }}</code>
+        <form method="post" action="/collections/{{ collection.id }}/regenerate-invite" style="display: inline; margin-left: 0.5rem;">
+            <button type="submit" class="link-button">Regenerate</button>
+        </form>
+    </div>
+    {% endif %}
+</div>
+
+<h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Members</h2>
+
+<div class="entry-list">
+    {% for member in members %}
+    <div class="entry">
+        <div class="entry-header">
+            <div class="entry-title">{{ member.name }}</div>
+            {% if is_owner %}
+            <div class="entry-actions">
+                <button
+                    class="link-button"
+                    style="color: red;"
+                    hx-delete="/collections/{{ collection.id }}/members/{{ member.id }}"
+                    hx-confirm="Remove {{ member.name }} from this collection?"
+                >
+                    Remove
+                </button>
+            </div>
+            {% endif %}
+        </div>
+        <div class="entry-meta">
+            {% if let Some(email) = &member.email %}{{ email }}{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<p style="margin-top: 2rem;">
+    <a href="/collections">&larr; Back to collections</a>
+</p>
+{% endblock %}

@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block title %}Collections - Interne{% endblock %}
+
+{% block header_actions %}
+<a href="/collections/new">+ New Collection</a>
+{% endblock %}
+
+{% block content %}
+<h1 style="font-size: 1.25rem; margin-bottom: 1.5rem;">Collections</h1>
+
+<div style="margin-bottom: 2rem;">
+    <h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Join a Collection</h2>
+    <form method="post" action="/collections/join" style="display: flex; gap: 0.5rem;">
+        <input type="text" name="invite_code" placeholder="Invite code" required style="flex: 1;">
+        <button type="submit">Join</button>
+    </form>
+</div>
+
+{% if collections.is_empty() %}
+<p class="empty">No collections yet.</p>
+{% else %}
+<div class="entry-list">
+    {% for collection in collections %}
+    <div class="entry">
+        <div class="entry-header">
+            <div class="entry-title">
+                <a href="/collections/{{ collection.id }}">{{ collection.name }}</a>
+            </div>
+            <div class="entry-actions">
+                {% if collection.is_owner %}
+                <a href="/collections/{{ collection.id }}/edit">Edit</a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="entry-meta">
+            {{ collection.member_count }} member{% if collection.member_count != 1 %}s{% endif %}
+            {% if collection.is_owner %}&middot; Owner{% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}
