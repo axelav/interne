@@ -21,7 +21,6 @@ struct EntryListTemplate {
     entries: Vec<EntryView>,
     filter: String,
 
-    user_name: String,
     user: Option<User>,
 }
 
@@ -218,7 +217,6 @@ async fn list_entries(
         entries: entry_views,
         filter: "available".to_string(),
 
-        user_name: user.name.clone(),
         user: Some(user),
     };
     Ok(Html(template.render()?))
@@ -251,7 +249,6 @@ async fn list_all_entries(
         entries: entry_views,
         filter: "all".to_string(),
 
-        user_name: user.name.clone(),
         user: Some(user),
     };
     Ok(Html(template.render()?))

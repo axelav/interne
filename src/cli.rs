@@ -32,8 +32,8 @@ struct LegacyEntry {
     duration: String,
     interval: String,
     visited: Option<i64>,
-    #[allow(dead_code)]
-    id: String,
+    #[serde(rename = "id")]
+    _id: String,
     #[serde(rename = "createdAt")]
     created_at: Option<String>,
     #[serde(rename = "updatedAt")]

@@ -9,10 +9,6 @@
     </h1>
 
     <form method="post" action="{% if let Some(e) = entry %}/entries/{{ e.id }}{% else %}/entries{% endif %}">
-        {% if entry.is_some() %}
-        <input type="hidden" name="_method" value="PUT">
-        {% endif %}
-
         <div class="form-group">
             <label for="url">URL</label>
             <input

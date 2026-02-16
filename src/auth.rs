@@ -43,7 +43,3 @@ pub async fn login_user(session: &Session, user: User) -> Result<(), tower_sessi
 pub async fn logout_user(session: &Session) -> Result<(), tower_sessions::session::Error> {
     session.flush().await
 }
-
-pub async fn get_current_user(session: &Session) -> Option<User> {
-    session.get::<User>(USER_ID_KEY).await.ok().flatten()
-}
