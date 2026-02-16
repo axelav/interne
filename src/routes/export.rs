@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crate::auth::AuthUser;
 use crate::error::AppError;
-use crate::models::Entry;
+use crate::models::{Entry, Interval};
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -19,7 +19,7 @@ struct ExportEntry {
     title: String,
     description: Option<String>,
     duration: i64,
-    interval: String,
+    interval: Interval,
     dismissed_at: Option<String>,
     created_at: String,
     updated_at: String,

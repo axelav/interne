@@ -1,7 +1,5 @@
-use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT")]
@@ -44,35 +42,8 @@ pub struct Entry {
     pub title: String,
     pub description: Option<String>,
     pub duration: i64,
-    pub interval: String,
+    pub interval: Interval,
     pub dismissed_at: Option<String>,
     pub created_at: String,
     pub updated_at: String,
-}
-
-impl Entry {
-    pub fn new(
-        user_id: String,
-        collection_id: Option<String>,
-        url: String,
-        title: String,
-        description: Option<String>,
-        duration: i64,
-        interval: Interval,
-    ) -> Self {
-        let now = Utc::now().to_rfc3339();
-        Self {
-            id: Uuid::new_v4().to_string(),
-            user_id,
-            collection_id,
-            url,
-            title,
-            description,
-            duration,
-            interval: interval.to_string(),
-            dismissed_at: None,
-            created_at: now.clone(),
-            updated_at: now,
-        }
-    }
 }

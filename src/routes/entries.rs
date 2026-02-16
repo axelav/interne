@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 use crate::auth::AuthUser;
 use crate::error::AppError;
-use crate::models::{Collection, Entry, User, Visit};
+use crate::models::{Collection, Entry, Interval, User, Visit};
 use crate::AppState;
 
 #[derive(Template)]
@@ -53,7 +53,7 @@ struct EntryWithCount {
     title: String,
     description: Option<String>,
     duration: i64,
-    interval: String,
+    interval: Interval,
     dismissed_at: Option<String>,
     created_at: String,
     updated_at: String,
@@ -97,7 +97,7 @@ pub struct EntryForm {
     title: String,
     description: Option<String>,
     duration: i64,
-    interval: String,
+    interval: Interval,
     tags: Option<String>,
     collection_id: Option<String>,
 }
@@ -121,13 +121,12 @@ fn calculate_availability(entry: &Entry) -> (bool, Option<String>) {
 
     let dismissed: DateTime<Utc> = dismissed_at.parse().unwrap_or_else(|_| Utc::now());
 
-    let duration = match entry.interval.as_str() {
-        "hours" => Duration::hours(entry.duration),
-        "days" => Duration::days(entry.duration),
-        "weeks" => Duration::weeks(entry.duration),
-        "months" => Duration::days(entry.duration * 30),
-        "years" => Duration::days(entry.duration * 365),
-        _ => Duration::days(entry.duration),
+    let duration = match entry.interval {
+        Interval::Hours => Duration::hours(entry.duration),
+        Interval::Days => Duration::days(entry.duration),
+        Interval::Weeks => Duration::weeks(entry.duration),
+        Interval::Months => Duration::days(entry.duration * 30),
+        Interval::Years => Duration::days(entry.duration * 365),
     };
 
     let available_at = dismissed + duration;

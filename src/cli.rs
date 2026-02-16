@@ -3,6 +3,8 @@ use sqlx::SqlitePool;
 use std::fs;
 use uuid::Uuid;
 
+use crate::models::Interval;
+
 // Custom deserializer to handle duration as either string or integer
 fn deserialize_duration<'de, D>(deserializer: D) -> Result<String, D::Error>
 where
@@ -63,6 +65,18 @@ pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> R
         let created_at = entry.created_at.unwrap_or_else(|| now.clone());
         let updated_at = entry.updated_at.unwrap_or_else(|| now.clone());
 
+        let interval = match entry.interval.as_str() {
+            "hours" => Interval::Hours,
+            "days" => Interval::Days,
+            "weeks" => Interval::Weeks,
+            "months" => Interval::Months,
+            "years" => Interval::Years,
+            other => {
+                eprintln!("Unknown interval: {other}, defaulting to days");
+                Interval::Days
+            }
+        };
+
         sqlx::query(
             r#"
             INSERT INTO entries (id, user_id, url, title, description, duration, interval, dismissed_at, created_at, updated_at)
@@ -75,7 +89,7 @@ pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> R
         .bind(&entry.title)
         .bind(&entry.description)
         .bind(duration)
-        .bind(&entry.interval)
+        .bind(&interval)
         .bind(&entry.dismissed_at)
         .bind(&created_at)
         .bind(&updated_at)
