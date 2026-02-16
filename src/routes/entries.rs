@@ -1,15 +1,17 @@
 use askama::Template;
 use axum::{
     extract::{Path, State},
-    response::{Html, IntoResponse},
-    routing::{get, post},
-    Router,
+    response::{Html, IntoResponse, Redirect},
+    routing::{delete, get, post},
+    Form, Router,
 };
 use chrono::{DateTime, Duration, Utc};
+use serde::Deserialize;
 use sqlx::FromRow;
+use std::collections::HashMap;
 
 use crate::auth::AuthUser;
-use crate::models::{Entry, User, Visit};
+use crate::models::{Collection, Entry, User, Visit};
 use crate::AppState;
 
 #[derive(Template)]
@@ -77,10 +79,37 @@ impl EntryWithCount {
     }
 }
 
+#[derive(Template)]
+#[template(path = "entries/form.html")]
+struct EntryFormTemplate {
+    entry: Option<Entry>,
+    collections: Vec<Collection>,
+    tags_string: String,
+    errors: HashMap<String, String>,
+    current_date: String,
+    user: Option<User>,
+}
+
+#[derive(Deserialize)]
+pub struct EntryForm {
+    url: String,
+    title: String,
+    description: Option<String>,
+    duration: i64,
+    interval: String,
+    tags: Option<String>,
+    collection_id: Option<String>,
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_entries))
         .route("/all", get(list_all_entries))
+        .route("/entries/new", get(new_entry_form))
+        .route("/entries", post(create_entry))
+        .route("/entries/{id}/edit", get(edit_entry_form))
+        .route("/entries/{id}", post(update_entry))
+        .route("/entries/{id}", delete(delete_entry))
         .route("/entries/{id}/visit", post(visit_entry))
 }
 
@@ -274,6 +303,9 @@ async fn visit_entry(
         .await
         .unwrap();
 
+    // Update local entry for correct availability calculation
+    entry.dismissed_at = Some(now);
+
     let visit_count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM visits WHERE entry_id = ?")
         .bind(&id)
         .fetch_one(&state.db)
@@ -295,4 +327,281 @@ async fn visit_entry(
         },
     };
     Html(template.render().unwrap()).into_response()
+}
+
+async fn new_entry_form(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> impl IntoResponse {
+    let collections: Vec<Collection> = sqlx::query_as(
+        r#"
+        SELECT c.* FROM collections c
+        LEFT JOIN collection_members cm ON cm.collection_id = c.id
+        WHERE c.owner_id = ? OR cm.user_id = ?
+        "#
+    )
+    .bind(&user.id)
+    .bind(&user.id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    let template = EntryFormTemplate {
+        entry: None,
+        collections,
+        tags_string: String::new(),
+        errors: HashMap::new(),
+        current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+        user: Some(user),
+    };
+    Html(template.render().unwrap())
+}
+
+async fn create_entry(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Form(form): Form<EntryForm>,
+) -> impl IntoResponse {
+    let now = chrono::Utc::now().to_rfc3339();
+    let id = uuid::Uuid::new_v4().to_string();
+
+    let collection_id = form.collection_id.filter(|s| !s.is_empty());
+
+    sqlx::query(
+        r#"
+        INSERT INTO entries (id, user_id, collection_id, url, title, description, duration, interval, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        "#
+    )
+    .bind(&id)
+    .bind(&user.id)
+    .bind(&collection_id)
+    .bind(&form.url)
+    .bind(&form.title)
+    .bind(&form.description)
+    .bind(form.duration)
+    .bind(&form.interval)
+    .bind(&now)
+    .bind(&now)
+    .execute(&state.db)
+    .await
+    .unwrap();
+
+    // Handle tags
+    if let Some(tags) = form.tags {
+        for tag_name in tags.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()) {
+            // Get or create tag
+            let tag_id: Option<(String,)> = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
+                .bind(&tag_name)
+                .fetch_optional(&state.db)
+                .await
+                .unwrap();
+
+            let tag_id = match tag_id {
+                Some((id,)) => id,
+                None => {
+                    let new_id = uuid::Uuid::new_v4().to_string();
+                    sqlx::query("INSERT INTO tags (id, name, created_at) VALUES (?, ?, ?)")
+                        .bind(&new_id)
+                        .bind(&tag_name)
+                        .bind(&now)
+                        .execute(&state.db)
+                        .await
+                        .unwrap();
+                    new_id
+                }
+            };
+
+            // Link tag to entry
+            sqlx::query("INSERT OR IGNORE INTO entry_tags (entry_id, tag_id) VALUES (?, ?)")
+                .bind(&id)
+                .bind(&tag_id)
+                .execute(&state.db)
+                .await
+                .unwrap();
+        }
+    }
+
+    Redirect::to("/").into_response()
+}
+
+async fn edit_entry_form(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    // Verify user has access to this entry
+    let entry: Option<Entry> = sqlx::query_as(
+        r#"
+        SELECT * FROM entries WHERE id = ? AND (user_id = ? OR collection_id IN (
+            SELECT collection_id FROM collection_members WHERE user_id = ?
+        ))
+        "#
+    )
+    .bind(&id)
+    .bind(&user.id)
+    .bind(&user.id)
+    .fetch_optional(&state.db)
+    .await
+    .unwrap();
+
+    let Some(entry) = entry else {
+        return Redirect::to("/").into_response();
+    };
+
+    let collections: Vec<Collection> = sqlx::query_as(
+        r#"
+        SELECT c.* FROM collections c
+        LEFT JOIN collection_members cm ON cm.collection_id = c.id
+        WHERE c.owner_id = ? OR cm.user_id = ?
+        "#
+    )
+    .bind(&user.id)
+    .bind(&user.id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    let tags: Vec<(String,)> = sqlx::query_as(
+        "SELECT t.name FROM tags t JOIN entry_tags et ON et.tag_id = t.id WHERE et.entry_id = ?"
+    )
+    .bind(&id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    let tags_string = tags.into_iter().map(|(name,)| name).collect::<Vec<_>>().join(", ");
+
+    let template = EntryFormTemplate {
+        entry: Some(entry),
+        collections,
+        tags_string,
+        errors: HashMap::new(),
+        current_date: chrono::Local::now().format("%B %d, %Y").to_string(),
+        user: Some(user),
+    };
+    Html(template.render().unwrap()).into_response()
+}
+
+async fn update_entry(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    Form(form): Form<EntryForm>,
+) -> impl IntoResponse {
+    // Verify user has access to this entry
+    let entry: Option<Entry> = sqlx::query_as(
+        r#"
+        SELECT * FROM entries WHERE id = ? AND (user_id = ? OR collection_id IN (
+            SELECT collection_id FROM collection_members WHERE user_id = ?
+        ))
+        "#
+    )
+    .bind(&id)
+    .bind(&user.id)
+    .bind(&user.id)
+    .fetch_optional(&state.db)
+    .await
+    .unwrap();
+
+    if entry.is_none() {
+        return Redirect::to("/").into_response();
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let collection_id = form.collection_id.filter(|s| !s.is_empty());
+
+    sqlx::query(
+        r#"
+        UPDATE entries
+        SET url = ?, title = ?, description = ?, duration = ?, interval = ?, collection_id = ?, updated_at = ?
+        WHERE id = ?
+        "#
+    )
+    .bind(&form.url)
+    .bind(&form.title)
+    .bind(&form.description)
+    .bind(form.duration)
+    .bind(&form.interval)
+    .bind(&collection_id)
+    .bind(&now)
+    .bind(&id)
+    .execute(&state.db)
+    .await
+    .unwrap();
+
+    // Clear existing tags and re-add
+    sqlx::query("DELETE FROM entry_tags WHERE entry_id = ?")
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+    if let Some(tags) = form.tags {
+        for tag_name in tags.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()) {
+            let tag_id: Option<(String,)> = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
+                .bind(&tag_name)
+                .fetch_optional(&state.db)
+                .await
+                .unwrap();
+
+            let tag_id = match tag_id {
+                Some((id,)) => id,
+                None => {
+                    let new_id = uuid::Uuid::new_v4().to_string();
+                    sqlx::query("INSERT INTO tags (id, name, created_at) VALUES (?, ?, ?)")
+                        .bind(&new_id)
+                        .bind(&tag_name)
+                        .bind(&now)
+                        .execute(&state.db)
+                        .await
+                        .unwrap();
+                    new_id
+                }
+            };
+
+            sqlx::query("INSERT OR IGNORE INTO entry_tags (entry_id, tag_id) VALUES (?, ?)")
+                .bind(&id)
+                .bind(&tag_id)
+                .execute(&state.db)
+                .await
+                .unwrap();
+        }
+    }
+
+    Redirect::to("/").into_response()
+}
+
+async fn delete_entry(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    // Verify user has access to this entry
+    let entry: Option<Entry> = sqlx::query_as(
+        r#"
+        SELECT * FROM entries WHERE id = ? AND (user_id = ? OR collection_id IN (
+            SELECT collection_id FROM collection_members WHERE user_id = ?
+        ))
+        "#
+    )
+    .bind(&id)
+    .bind(&user.id)
+    .bind(&user.id)
+    .fetch_optional(&state.db)
+    .await
+    .unwrap();
+
+    if entry.is_none() {
+        return ([("HX-Redirect", "/")], "").into_response();
+    }
+
+    sqlx::query("DELETE FROM entries WHERE id = ?")
+        .bind(&id)
+        .execute(&state.db)
+        .await
+        .unwrap();
+
+    // htmx expects empty response to remove element
+    ([("HX-Redirect", "/")], "").into_response()
 }
