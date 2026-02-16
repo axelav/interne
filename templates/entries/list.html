@@ -3,6 +3,17 @@
 {% block title %}Interne{% endblock %}
 
 {% block header_actions %}
+<a
+    href="{% if filter == "available" %}/all{% else %}/{% endif %}"
+    class="view-toggle"
+    hx-get="{% if filter == "available" %}/all{% else %}/{% endif %}"
+    hx-target="#entry-list"
+    hx-select="#entry-list"
+    hx-swap="outerHTML"
+    hx-push-url="true"
+>
+    {% if filter == "available" %}View All{% else %}View Available{% endif %}
+</a>
 <a href="/entries/new">+ Add</a>
 {% endblock %}
 
@@ -24,16 +35,3 @@
 </div>
 {% endblock %}
 
-{% block sidebar %}
-<a
-    href="{% if filter == "available" %}/all{% else %}/{% endif %}"
-    class="view-toggle"
-    hx-get="{% if filter == "available" %}/all{% else %}/{% endif %}"
-    hx-target="#entry-list"
-    hx-select="#entry-list"
-    hx-swap="outerHTML"
-    hx-push-url="true"
->
-    {% if filter == "available" %}View All{% else %}View Available{% endif %}
-</a>
-{% endblock %}

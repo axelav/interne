@@ -10,9 +10,11 @@
 <body>
     <div class="container">
         <header>
-            <a href="/" class="logo">Interne</a>
-            {% block header_actions %}{% endblock %}
-            <span class="date">{{ current_date }}</span>
+            <div class="header-left">
+                <a href="/" class="logo">Interne</a>
+                {% block header_actions %}{% endblock %}
+            </div>
+            <span class="date" id="clock"></span>
         </header>
 
         <main>
@@ -29,6 +31,23 @@
         </footer>
     </div>
 
-    {% block sidebar %}{% endblock %}
+<script>
+(function() {
+    var el = document.getElementById('clock');
+    function tick() {
+        var d = new Date();
+        var month = d.toLocaleString('en-US', { month: 'long' });
+        var day = d.getDate();
+        var h = d.getHours();
+        var m = d.getMinutes();
+        var ampm = h >= 12 ? 'PM' : 'AM';
+        h = h % 12 || 12;
+        m = m < 10 ? '0' + m : m;
+        el.textContent = month + ' ' + day + ', ' + h + ':' + m + ' ' + ampm;
+    }
+    tick();
+    setInterval(tick, 5000);
+})();
+</script>
 </body>
 </html>
