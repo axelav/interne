@@ -1,5 +1,6 @@
-use sqlx::sqlite::{SqlitePool, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePool, SqlitePoolOptions};
 use std::path::Path;
+use std::str::FromStr;
 
 pub async fn init_pool(database_url: &str) -> SqlitePool {
     // Ensure data directory exists
@@ -9,9 +10,13 @@ pub async fn init_pool(database_url: &str) -> SqlitePool {
         }
     }
 
+    let options = SqliteConnectOptions::from_str(database_url)
+        .expect("Invalid database URL")
+        .create_if_missing(true);
+
     let pool = SqlitePoolOptions::new()
         .max_connections(5)
-        .connect(database_url)
+        .connect_with(options)
         .await
         .expect("Failed to connect to database");
 
