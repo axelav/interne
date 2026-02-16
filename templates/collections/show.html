@@ -3,21 +3,21 @@
 {% block title %}{{ collection.name }} - Interne{% endblock %}
 
 {% block content %}
-<div style="margin-bottom: 2rem;">
-    <h1 style="font-size: 1.25rem; margin-bottom: 0.5rem;">{{ collection.name }}</h1>
+<div class="collection-header">
+    <h1 class="collection-title">{{ collection.name }}</h1>
 
     {% if is_owner %}
-    <div style="margin-bottom: 1rem; padding: 1rem; border: 1px solid #eee;">
+    <div class="invite-box">
         <strong>Invite Code:</strong>
-        <code style="background: #f5f5f5; padding: 0.25rem 0.5rem;">{{ collection.invite_code }}</code>
-        <form method="post" action="/collections/{{ collection.id }}/regenerate-invite" style="display: inline; margin-left: 0.5rem;">
+        <code class="invite-code">{{ collection.invite_code }}</code>
+        <form method="post" action="/collections/{{ collection.id }}/regenerate-invite" class="invite-actions">
             <button type="submit" class="link-button">Regenerate</button>
         </form>
     </div>
     {% endif %}
 </div>
 
-<h2 style="font-size: 1rem; margin-bottom: 0.5rem;">Members</h2>
+<h2 class="section-heading">Members</h2>
 
 <div class="entry-list">
     {% for member in members %}
@@ -27,8 +27,7 @@
             {% if is_owner %}
             <div class="entry-actions">
                 <button
-                    class="link-button"
-                    style="color: red;"
+                    class="link-button delete-button"
                     hx-delete="/collections/{{ collection.id }}/members/{{ member.id }}"
                     hx-confirm="Remove {{ member.name }} from this collection?"
                 >
@@ -45,7 +44,7 @@
 </div>
 
 {% if !is_owner %}
-<form method="post" action="/collections/{{ collection.id }}/leave" style="margin-top: 1rem;">
+<form method="post" action="/collections/{{ collection.id }}/leave" class="leave-form">
     <button type="submit" class="link-button delete-button"
         onclick="return confirm('Leave this collection?')">
         Leave Collection
@@ -53,7 +52,7 @@
 </form>
 {% endif %}
 
-<p style="margin-top: 2rem;">
+<p class="back-link">
     <a href="/collections">&larr; Back to collections</a>
 </p>
 {% endblock %}
