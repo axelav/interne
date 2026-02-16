@@ -16,7 +16,7 @@
 >
     {% if filter == "available" %}View All{% else %}View Available{% endif %}
 </a>
-<a href="/entries/new">+ Add</a>
+<a href="/entries/new">+ New Link</a>
 {% endblock %}
 
 {% block content %}
@@ -26,7 +26,7 @@
         {% if filter == "available" %}
             Nothing due. Go outside!
         {% else %}
-            No entries yet. Add one!
+            No links yet. Add one!
         {% endif %}
     </p>
     {% else %}

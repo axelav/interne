@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}{% if entry.is_some() %}Edit{% else %}Add{% endif %} Entry - Interne{% endblock %}
+{% block title %}{% if entry.is_some() %}Edit{% else %}Add{% endif %} Link - Interne{% endblock %}
 
 {% block content %}
 <div class="form-page">
     <h1 class="form-heading">
-        {% if entry.is_some() %}Edit Entry{% else %}Add Entry{% endif %}
+        {% if entry.is_some() %}Edit Link{% else %}Add Link{% endif %}
     </h1>
 
     <form method="post" action="{% if let Some(e) = entry %}/entries/{{ e.id }}{% else %}/entries{% endif %}">
@@ -104,7 +104,7 @@
                 type="button"
                 class="link-button delete-button"
                 hx-delete="/entries/{{ entry.as_ref().unwrap().id }}"
-                hx-confirm="Are you sure you want to delete this entry?"
+                hx-confirm="Are you sure you want to delete this link?"
             >
                 Delete
             </button>

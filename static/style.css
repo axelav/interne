@@ -77,6 +77,22 @@ header {
     color: var(--black);
 }
 
+header nav {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+header nav a {
+    font-size: 0.8125rem;
+    color: var(--gray-400);
+    text-decoration: none;
+}
+
+header nav a:hover {
+    color: var(--gray-600);
+}
+
 .date {
     font-size: 0.8125rem;
     color: var(--gray-400);

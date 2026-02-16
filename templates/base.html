@@ -14,7 +14,10 @@
                 <a href="/" class="logo">Interne</a>
                 {% block header_actions %}{% endblock %}
             </div>
-            <span class="date" id="clock"></span>
+            <nav>
+                <a href="/collections">Collections</a>
+                <span class="date" id="clock"></span>
+            </nav>
         </header>
 
         <main>
@@ -22,7 +25,6 @@
         </main>
 
         <footer>
-            <a href="/collections">Collections</a>
             <a href="/export">Export</a>
             {% if user.is_some() %}
             <form action="/logout" method="post" style="display: inline;">
