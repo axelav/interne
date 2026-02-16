@@ -15,11 +15,7 @@
 ### 3. View toggle positioning
 **Problem:** The "View All"/"View Available" toggle is positioned with `position: fixed; left: -2rem` which puts it mostly off-screen.
 
-**Question:** Where should this toggle live?
-- Option A: In the header, next to the logo
-- Option B: In the header, between logo and date
-- Option C: Above the entry list as a tab-style toggle
-- Option D: Something else?
+**Decision:** Place next to the logo in the header.
 
 ### 4. Header layout
 **Problem:** Header has logo, header_actions block, and date. The `+ Add` link sits between logo and date but the relationship between elements isn't clear.
@@ -29,7 +25,7 @@
 [Logo] [+ Add] [Date]
 ```
 
-**Question:** What should the header contain and how should it be arranged?
+**Decision:** Keep everything currently in the header and add the view toggle.
 
 ### 5. Footer styling inconsistent
 **Problem:** Footer has "Export" as a link and "Logout" as a button inside a form. The button styling (via `.link-button`) conflicts with `button[type="submit"]` styles, making Logout appear as a black filled button instead of a text link.
@@ -45,10 +41,7 @@
 [3 days ago · Available in 2 days]
 ```
 
-**Question:** What layout do you prefer?
-- Keep current two-row layout but add description
-- Single row with everything inline
-- Different arrangement?
+**Decision:** Keep two-row layout, add truncated descriptions.
 
 ## Proposed Changes (pending answers)
 
@@ -61,9 +54,9 @@ Each fix should be a separate commit:
 5. `fix: consistent footer link styling`
 6. `fix: entry card layout [details TBD]`
 
-## Open Questions
+## Decisions
 
-1. Where should the view toggle go?
-2. What's the desired header layout?
-3. What's the desired entry card layout?
-4. Should description be truncated or full?
+1. View toggle goes next to the logo in the header
+2. Header keeps current contents + view toggle
+3. Two-row entry card layout with truncated descriptions
+4. General design polish pass
