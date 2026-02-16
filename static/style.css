@@ -178,6 +178,9 @@ main {
 
 /* Forms */
 .form-page {
+}
+
+.form-page-narrow {
     max-width: 400px;
 }
 
