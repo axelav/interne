@@ -409,3 +409,34 @@ async fn remove_member(
 
     Ok(([("HX-Redirect", format!("/collections/{}", collection_id))], "").into_response())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn collection_form_valid() {
+        let form = CollectionForm {
+            name: "My Collection".to_string(),
+        };
+        assert!(validate_collection_form(&form).is_empty());
+    }
+
+    #[test]
+    fn collection_form_empty_name() {
+        let form = CollectionForm {
+            name: "   ".to_string(),
+        };
+        let errors = validate_collection_form(&form);
+        assert!(errors.contains_key("name"));
+    }
+
+    #[test]
+    fn collection_form_name_too_long() {
+        let form = CollectionForm {
+            name: "a".repeat(101),
+        };
+        let errors = validate_collection_form(&form);
+        assert!(errors.contains_key("name"));
+    }
+}
