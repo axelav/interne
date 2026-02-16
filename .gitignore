@@ -38,6 +38,11 @@ yarn-error.log*
 .worktrees/
 
 
-# Added by cargo
-
+# Rust
 /target
+
+# SQLite database
+data/
+*.db
+*.db-shm
+*.db-wal
