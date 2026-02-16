@@ -153,7 +153,9 @@ fn format_last_viewed(dismissed_at: &Option<String>) -> Option<String> {
     let now = Utc::now();
     let diff = now - dismissed;
 
-    Some(if diff.num_days() > 30 {
+    Some(if diff.num_days() > 365 {
+        format!("{} years ago", diff.num_days() / 365)
+    } else if diff.num_days() > 30 {
         format!("{} months ago", diff.num_days() / 30)
     } else if diff.num_days() > 0 {
         format!("{} days ago", diff.num_days())
