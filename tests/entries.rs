@@ -33,7 +33,90 @@ async fn create_entry_with_empty_title_shows_error() {
 }
 
 #[tokio::test]
-async fn create_entry_with_bad_url_shows_error() {
+async fn create_entry_with_bare_domain_normalizes_url() {
+    let app = TestApp::new().await;
+    let (user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    // "yahoo.com" should be accepted and normalized to "https://yahoo.com/"
+    let body = "url=yahoo.com&title=Yahoo&description=&duration=3&interval=days&tags=&collection_id=";
+    let resp = app.post_form("/entries", body, Some(&cookie)).await;
+    assert_redirect(&resp, "/");
+
+    let (url,): (String,) = sqlx::query_as("SELECT url FROM entries WHERE user_id = ?")
+        .bind(&user_id)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+    assert_eq!(url, "https://yahoo.com/");
+}
+
+#[tokio::test]
+async fn create_entry_with_https_url_preserves_it() {
+    let app = TestApp::new().await;
+    let (user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    let body = "url=https%3A%2F%2Fexample.com%2Fpath&title=Example&description=&duration=3&interval=days&tags=&collection_id=";
+    let resp = app.post_form("/entries", body, Some(&cookie)).await;
+    assert_redirect(&resp, "/");
+
+    let (url,): (String,) = sqlx::query_as("SELECT url FROM entries WHERE user_id = ?")
+        .bind(&user_id)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+    assert_eq!(url, "https://example.com/path");
+}
+
+#[tokio::test]
+async fn create_entry_with_http_url_preserves_it() {
+    let app = TestApp::new().await;
+    let (user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    let body = "url=http%3A%2F%2Fexample.com&title=Example&description=&duration=3&interval=days&tags=&collection_id=";
+    let resp = app.post_form("/entries", body, Some(&cookie)).await;
+    assert_redirect(&resp, "/");
+
+    let (url,): (String,) = sqlx::query_as("SELECT url FROM entries WHERE user_id = ?")
+        .bind(&user_id)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+    assert_eq!(url, "http://example.com/");
+}
+
+#[tokio::test]
+async fn create_entry_with_invalid_url_shows_error() {
+    let app = TestApp::new().await;
+    let (_user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    // "not a url" has no valid domain structure
+    let body = "url=not+a+url&title=Test&description=&duration=3&interval=days&tags=&collection_id=";
+    let resp = app.post_form("/entries", body, Some(&cookie)).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(html.contains("Please enter a valid URL"));
+}
+
+#[tokio::test]
+async fn create_entry_with_bare_word_shows_error() {
+    let app = TestApp::new().await;
+    let (_user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    // "yahoo" alone is not a valid URL even after normalization
+    let body = "url=yahoo&title=Test&description=&duration=3&interval=days&tags=&collection_id=";
+    let resp = app.post_form("/entries", body, Some(&cookie)).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(html.contains("Please enter a valid URL"));
+}
+
+#[tokio::test]
+async fn create_entry_with_ftp_url_shows_error() {
     let app = TestApp::new().await;
     let (_user_id, invite_code) = app.create_user("Test User").await;
     let cookie = app.login(&invite_code).await;
@@ -42,7 +125,25 @@ async fn create_entry_with_bad_url_shows_error() {
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
-    assert!(html.contains("URL must start with http"));
+    assert!(html.contains("Please enter a valid URL"));
+}
+
+#[tokio::test]
+async fn create_entry_with_path_and_query_normalizes() {
+    let app = TestApp::new().await;
+    let (user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    let body = "url=example.com%2Fpath%3Fq%3D1&title=Test&description=&duration=3&interval=days&tags=&collection_id=";
+    let resp = app.post_form("/entries", body, Some(&cookie)).await;
+    assert_redirect(&resp, "/");
+
+    let (url,): (String,) = sqlx::query_as("SELECT url FROM entries WHERE user_id = ?")
+        .bind(&user_id)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+    assert_eq!(url, "https://example.com/path?q=1");
 }
 
 #[tokio::test]
