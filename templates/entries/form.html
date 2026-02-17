@@ -158,11 +158,12 @@
         return !msg;
     }
 
-    // Validate on blur
+    // Validate on blur, clear on input
     ['url', 'title', 'duration', 'description'].forEach(function(name) {
         var input = form.querySelector('[name="' + name + '"]');
         if (input) {
             input.addEventListener('blur', function() { validateField(name); });
+            input.addEventListener('input', function() { showError(name, ''); });
         }
     });
 
