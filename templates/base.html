@@ -63,7 +63,7 @@
     var links = document.querySelectorAll('header nav a');
     links.forEach(function(a) {
         var href = a.getAttribute('href');
-        if ((href === '/' && (path === '/' || path === '/all')) ||
+        if ((href === '/' && (path === '/' || path === '/all' || path === '/hidden' || path === '/no-visits')) ||
             (href !== '/' && path.startsWith(href))) {
             a.classList.add('active');
         }

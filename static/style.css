@@ -78,14 +78,25 @@ header nav a.active {
     gap: 1rem;
 }
 
-.view-toggle {
+.view-filter {
     font-size: 0.8125rem;
-    color: var(--gray-600);
+    color: var(--gray-400);
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.view-filter-link {
+    color: var(--gray-400);
     text-decoration: none;
 }
 
-.view-toggle:hover {
-    color: var(--black);
+.view-filter-link:hover {
+    color: var(--gray-600);
+}
+
+.view-filter-link.active {
+    color: var(--gray-600);
 }
 
 .date {
