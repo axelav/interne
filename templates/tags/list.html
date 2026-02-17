@@ -9,7 +9,7 @@
 <div class="tag-cloud">
     {% for tag in tags %}
     <a
-        href="/tags/{{ tag.name }}"
+        href="/tags/{{ tag.name|urlencode }}"
         class="tag-cloud-item"
         style="font-size: {{ tag.font_size }}; color: {{ tag.color }};"
         title="{{ tag.count }} link{% if tag.count != 1 %}s{% endif %}"
