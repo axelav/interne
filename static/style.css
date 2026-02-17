@@ -444,6 +444,25 @@ footer .link-button:hover {
     margin-top: 2rem;
 }
 
+/* Tag cloud */
+.tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem 0.75rem;
+    line-height: 1.3;
+    padding: 1rem 0;
+}
+
+.tag-cloud-item {
+    text-decoration: none;
+    transition: opacity 0.15s ease;
+}
+
+.tag-cloud-item:hover {
+    opacity: 0.7;
+}
+
 /* htmx loading states */
 .htmx-request {
     opacity: 0.5;
