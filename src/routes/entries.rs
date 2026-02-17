@@ -43,7 +43,7 @@ pub struct EntryView {
 
 /// Entry with visit count for queries that join entries with visits
 #[derive(FromRow)]
-struct EntryWithCount {
+pub struct EntryWithCount {
     // Entry fields
     id: String,
     user_id: String,
@@ -61,7 +61,7 @@ struct EntryWithCount {
 }
 
 impl EntryWithCount {
-    fn into_entry_and_count(self) -> (Entry, i64) {
+    pub fn into_entry_and_count(self) -> (Entry, i64) {
         let entry = Entry {
             id: self.id,
             user_id: self.user_id,

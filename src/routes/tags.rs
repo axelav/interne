@@ -5,10 +5,12 @@ use axum::{
     routing::get,
     Router,
 };
+use chrono::Utc;
 
 use crate::auth::AuthUser;
 use crate::error::AppError;
 use crate::models::User;
+use crate::routes::entries::{build_entry_view, EntryView, EntryWithCount};
 use crate::AppState;
 
 struct TagWithCount {
@@ -27,6 +29,16 @@ struct TagCloudItem {
 #[template(path = "tags/list.html")]
 struct TagListTemplate {
     tags: Vec<TagCloudItem>,
+    static_hash: &'static str,
+    user: Option<User>,
+}
+
+#[derive(Template)]
+#[template(path = "tags/show.html")]
+struct TagShowTemplate {
+    tag_name: String,
+    entry_count: usize,
+    entries: Vec<EntryView>,
     static_hash: &'static str,
     user: Option<User>,
 }
@@ -125,10 +137,45 @@ async fn list_tags(
 }
 
 async fn show_tag(
-    State(_state): State<AppState>,
-    AuthUser(_user): AuthUser,
-    Path(_name): Path<String>,
-) -> Result<Html<String>, AppError> {
-    // Placeholder — implemented in Task 2
-    todo!()
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(name): Path<String>,
+) -> Result<impl IntoResponse, AppError> {
+    let rows: Vec<EntryWithCount> = sqlx::query_as(
+        r#"
+        SELECT e.*, COUNT(v.id) as visit_count
+        FROM entries e
+        JOIN entry_tags et ON et.entry_id = e.id
+        JOIN tags t ON t.id = et.tag_id
+        LEFT JOIN visits v ON v.entry_id = e.id
+        WHERE t.name = ? AND e.user_id = ?
+        GROUP BY e.id
+        ORDER BY e.dismissed_at DESC NULLS FIRST
+        "#
+    )
+    .bind(&name)
+    .bind(&user.id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+
+    let now = Utc::now();
+    let entries: Vec<EntryView> = rows
+        .into_iter()
+        .map(|r| {
+            let (entry, count) = r.into_entry_and_count();
+            build_entry_view(entry, count, now)
+        })
+        .collect();
+
+    let entry_count = entries.len();
+
+    let template = TagShowTemplate {
+        tag_name: name,
+        entry_count,
+        entries,
+        static_hash: crate::STATIC_HASH,
+        user: Some(user),
+    };
+    Ok(Html(template.render()?))
 }
