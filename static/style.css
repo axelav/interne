@@ -67,9 +67,12 @@ header nav a {
     text-decoration: none;
 }
 
-header nav a:hover,
-header nav a.active {
+header nav a:hover {
     color: var(--gray-600);
+}
+
+header nav a.active {
+    color: var(--black);
 }
 
 .header-left {
@@ -93,7 +96,7 @@ header nav a.active {
 }
 
 .view-filter-link.active {
-    color: var(--gray-600);
+    color: var(--black);
 }
 
 .date {
