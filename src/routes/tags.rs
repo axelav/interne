@@ -1,10 +1,11 @@
 use askama::Template;
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     response::{Html, IntoResponse},
     routing::get,
     Router,
 };
+use serde::Deserialize;
 use chrono::Utc;
 
 use crate::auth::AuthUser;
@@ -12,6 +13,11 @@ use crate::error::AppError;
 use crate::models::User;
 use crate::routes::entries::{build_entry_view, EntryView, EntryWithCount};
 use crate::AppState;
+
+#[derive(Deserialize)]
+struct TagSearchParams {
+    q: Option<String>,
+}
 
 struct TagWithCount {
     name: String,
@@ -99,6 +105,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/tags", get(list_tags))
         .route("/tags/{name}", get(show_tag))
+        .route("/api/tags/search", get(search_tags))
 }
 
 async fn list_tags(
@@ -178,4 +185,51 @@ async fn show_tag(
         user: Some(user),
     };
     Ok(Html(template.render()?))
+}
+
+fn escape_html(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+async fn search_tags(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Query(params): Query<TagSearchParams>,
+) -> Result<impl IntoResponse, AppError> {
+    let prefix = params.q.unwrap_or_default().trim().to_lowercase();
+    if prefix.is_empty() {
+        return Ok(Html(String::new()));
+    }
+
+    let pattern = format!("{}%", prefix);
+    let tags: Vec<(String,)> = sqlx::query_as(
+        r#"
+        SELECT DISTINCT t.name
+        FROM tags t
+        JOIN entry_tags et ON et.tag_id = t.id
+        JOIN entries e ON e.id = et.entry_id
+        WHERE e.user_id = ? AND t.name LIKE ?
+        ORDER BY t.name ASC
+        LIMIT 10
+        "#,
+    )
+    .bind(&user.id)
+    .bind(&pattern)
+    .fetch_all(&state.db)
+    .await?;
+
+    let html: String = tags
+        .into_iter()
+        .map(|(name,)| {
+            let escaped = escape_html(&name);
+            format!(
+                r#"<button type="button" class="autocomplete-item" data-value="{escaped}">{escaped}</button>"#
+            )
+        })
+        .collect();
+
+    Ok(Html(html))
 }
