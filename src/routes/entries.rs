@@ -122,6 +122,12 @@ fn validate_entry_form(form: &EntryForm) -> HashMap<String, String> {
         errors.insert("title".to_string(), "Title must be under 500 characters".to_string());
     }
 
+    if let Some(ref desc) = form.description {
+        if desc.len() > 5000 {
+            errors.insert("description".to_string(), "Description must be under 5000 characters".to_string());
+        }
+    }
+
     errors
 }
 

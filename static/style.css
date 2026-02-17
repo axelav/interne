@@ -297,6 +297,17 @@ textarea {
     font-size: 0.8125rem;
 }
 
+.char-count {
+    font-size: 0.75rem;
+    color: var(--gray-400);
+    text-align: right;
+    margin-top: 0.25rem;
+}
+
+.char-count.near-limit {
+    color: #c0392b;
+}
+
 button[type="submit"]:not(.link-button) {
     padding: 0.5rem 1.25rem;
     background: var(--black);

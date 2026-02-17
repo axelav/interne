@@ -41,7 +41,10 @@
                 id="description"
                 name="description"
                 rows="3"
+                maxlength="5000"
             >{% if let Some(e) = entry %}{% if let Some(desc) = &e.description %}{{ desc }}{% endif %}{% endif %}</textarea>
+            <div class="char-count" id="desc-count"></div>
+            <div class="error-message">{% if let Some(err) = errors.get("description") %}{{ err }}{% endif %}</div>
         </div>
 
         <div class="form-row">
@@ -113,4 +116,23 @@
         {% endif %}
     </div>
 </div>
+
+<script>
+(function() {
+    var ta = document.getElementById('description');
+    var counter = document.getElementById('desc-count');
+    var max = 5000;
+    function update() {
+        var len = ta.value.length;
+        if (len > 0) {
+            counter.textContent = len + ' / ' + max;
+            counter.classList.toggle('near-limit', len >= max * 0.9);
+        } else {
+            counter.textContent = '';
+        }
+    }
+    ta.addEventListener('input', update);
+    update();
+})();
+</script>
 {% endblock %}
