@@ -676,3 +676,31 @@ Expected: All tests pass.
 **Step 4: Commit (if any fixes needed)**
 
 Only if manual testing revealed issues that needed fixing.
+
+---
+
+## Future Work
+
+### Preserve form data on server-side validation failure
+
+When server-side validation fails, the form re-renders but loses all user input. On **create**, `entry: None` is passed so fields are empty. On **update**, the old DB entry is used so edits revert. Only `tags_string` is preserved. This affects all forms in the app (entries, collections).
+
+**Approach 1: Pass form values to template (recommended)**
+
+Add `form: Option<EntryForm>` to each form template struct. On validation failure, pass the submitted form data. Template prefers `form` values over `entry` values.
+
+- Clean separation between "user input" and "saved data"
+- No fake/dummy data needed
+- Works when form fields don't map 1:1 to the model
+- One extra field per template struct; form struct already exists from deserialization
+- Reusable pattern: every form handler follows the same convention
+
+**Approach 2: Build a temporary model from form data**
+
+Construct an `Entry` from submitted values and pass as `entry: Some(...)`. Existing template logic works without changes.
+
+- Zero template changes
+- But requires fabricating fake IDs, timestamps, and non-form fields
+- Conflates DB data with user input — misleading in the type system
+- On create, `entry.is_some()` triggers edit-mode UI (e.g. Delete button appears)
+- Breaks down for models with relations or computed fields
