@@ -21,7 +21,9 @@
                     <a href="/tags">Tags</a>
                     <a href="/collections">Collections</a>
                     {% endif %}
+                    {% block nav_end %}
                     <span class="date" id="clock"></span>
+                    {% endblock %}
                 </nav>
             </div>
             {% block header_actions %}{% endblock %}

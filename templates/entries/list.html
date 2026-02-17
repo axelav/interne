@@ -2,20 +2,27 @@
 
 {% block title %}Interne{% endblock %}
 
-{% block header_left %}
-<div id="view-filter" class="view-filter">
-    <a href="/" class="view-filter-link{% if filter == "ready" %} active{% endif %}" hx-get="/" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Ready</a>
-    /
-    <a href="/waiting" class="view-filter-link{% if filter == "waiting" %} active{% endif %}" hx-get="/waiting" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Waiting</a>
-    /
-    <a href="/unseen" class="view-filter-link{% if filter == "unseen" %} active{% endif %}" hx-get="/unseen" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Unseen</a>
-    /
-    <a href="/all" class="view-filter-link{% if filter == "all" %} active{% endif %}" hx-get="/all" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">All</a>
+{% block nav_end %}
+<div class="search-trigger" id="search-trigger">
+    <svg class="search-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+    <div class="search-swap">
+        <span class="date" id="clock"></span>
+        <input type="search" class="search-field" id="search-input" placeholder="Search..." autocomplete="off" spellcheck="false">
+    </div>
 </div>
 {% endblock %}
 
 {% block header_actions %}
 <div class="header-actions">
+    <div id="view-filter" class="view-filter">
+        <a href="/" class="view-filter-link{% if filter == "ready" %} active{% endif %}" hx-get="/" hx-target="#entry-list" hx-select="#entry-list" hx-swap="outerHTML" hx-push-url="true">Ready</a>
+        /
+        <a href="/waiting" class="view-filter-link{% if filter == "waiting" %} active{% endif %}" hx-get="/waiting" hx-target="#entry-list" hx-select="#entry-list" hx-swap="outerHTML" hx-push-url="true">Waiting</a>
+        /
+        <a href="/unseen" class="view-filter-link{% if filter == "unseen" %} active{% endif %}" hx-get="/unseen" hx-target="#entry-list" hx-select="#entry-list" hx-swap="outerHTML" hx-push-url="true">Unseen</a>
+        /
+        <a href="/all" class="view-filter-link{% if filter == "all" %} active{% endif %}" hx-get="/all" hx-target="#entry-list" hx-select="#entry-list" hx-swap="outerHTML" hx-push-url="true">All</a>
+    </div>
     <a href="/entries/new">+ New Link</a>
 </div>
 {% endblock %}
@@ -40,5 +47,74 @@
         {% endfor %}
     {% endif %}
 </div>
+
+<script>
+(function() {
+    var trigger = document.getElementById('search-trigger');
+    var input = document.getElementById('search-input');
+    var hovering = false;
+    var timer;
+
+    function activate() { trigger.classList.add('active'); }
+    function deactivate() {
+        if (!hovering && !input.value) trigger.classList.remove('active');
+    }
+
+    function filterEntries() {
+        var q = input.value.toLowerCase();
+        var entries = document.getElementById('entry-list').querySelectorAll('.entry');
+        for (var i = 0; i < entries.length; i++) {
+            var haystack = entries[i].getAttribute('data-search').toLowerCase();
+            entries[i].style.display = (!q || haystack.indexOf(q) !== -1) ? '' : 'none';
+        }
+    }
+
+    trigger.addEventListener('mouseenter', function() {
+        hovering = true;
+        activate();
+        input.focus();
+    });
+    trigger.addEventListener('mouseleave', function() {
+        hovering = false;
+        if (document.activeElement !== input) deactivate();
+    });
+    input.addEventListener('focus', activate);
+    input.addEventListener('blur', deactivate);
+
+    // filter entries
+    input.addEventListener('input', function() {
+        clearTimeout(timer);
+        timer = setTimeout(filterEntries, 150);
+    });
+
+    // re-apply search filter after htmx loads new content
+    document.body.addEventListener('htmx:load', function() {
+        if (input.value) filterEntries();
+    });
+
+    // update active filter link (no OOB swap, so we handle it client-side)
+    document.getElementById('view-filter').addEventListener('click', function(e) {
+        var link = e.target.closest('.view-filter-link');
+        if (!link) return;
+        var links = document.querySelectorAll('.view-filter-link');
+        for (var i = 0; i < links.length; i++) links[i].classList.remove('active');
+        link.classList.add('active');
+    });
+
+    // keyboard shortcut: / to focus, Escape to clear
+    document.addEventListener('keydown', function(e) {
+        if (e.key === '/' && document.activeElement.tagName !== 'INPUT' && document.activeElement.tagName !== 'TEXTAREA') {
+            e.preventDefault();
+            activate();
+            input.focus();
+        }
+        if (e.key === 'Escape' && document.activeElement === input) {
+            input.value = '';
+            input.dispatchEvent(new Event('input'));
+            input.blur();
+        }
+    });
+})();
+</script>
 {% endblock %}
 
