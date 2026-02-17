@@ -101,6 +101,36 @@ pub struct EntryForm {
     collection_id: Option<String>,
 }
 
+/// Normalizes a URL string: prepends `https://` if no scheme, then parses with
+/// the `url` crate. Returns `Ok(normalized_url_string)` or `Err(error_message)`.
+fn normalize_url(raw: &str) -> Result<String, String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Ok(String::new());
+    }
+
+    // If no scheme, prepend https://
+    let with_scheme = if raw.starts_with("http://") || raw.starts_with("https://") {
+        raw.to_string()
+    } else if raw.contains("://") {
+        // Has a scheme but it's not http/https (e.g. ftp://)
+        return Err("Please enter a valid URL (e.g. example.com)".to_string());
+    } else {
+        format!("https://{}", raw)
+    };
+
+    match url::Url::parse(&with_scheme) {
+        Ok(parsed) => {
+            // Reject if the host is empty or not a valid domain
+            match parsed.host_str() {
+                Some(host) if host.contains('.') => Ok(parsed.to_string()),
+                _ => Err("Please enter a valid URL (e.g. example.com)".to_string()),
+            }
+        }
+        Err(_) => Err("Please enter a valid URL (e.g. example.com)".to_string()),
+    }
+}
+
 fn validate_entry_form(form: &EntryForm) -> HashMap<String, String> {
     let mut errors = HashMap::new();
 
@@ -109,8 +139,8 @@ fn validate_entry_form(form: &EntryForm) -> HashMap<String, String> {
     }
 
     if !form.url.is_empty() {
-        if !form.url.starts_with("http://") && !form.url.starts_with("https://") {
-            errors.insert("url".to_string(), "URL must start with http:// or https://".to_string());
+        if let Err(msg) = normalize_url(&form.url) {
+            errors.insert("url".to_string(), msg);
         }
     }
 
@@ -480,7 +510,7 @@ async fn create_entry(
     .bind(&id)
     .bind(&user.id)
     .bind(&collection_id)
-    .bind(&form.url)
+    .bind(&normalize_url(&form.url).unwrap())
     .bind(&form.title)
     .bind(&form.description)
     .bind(form.duration)
@@ -632,7 +662,7 @@ async fn update_entry(
         WHERE id = ?
         "#
     )
-    .bind(&form.url)
+    .bind(&normalize_url(&form.url).unwrap())
     .bind(&form.title)
     .bind(&form.description)
     .bind(form.duration)
