@@ -40,6 +40,8 @@ struct LegacyEntry {
     updated_at: Option<String>,
     #[serde(rename = "dismissedAt")]
     dismissed_at: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
 }
 
 pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
@@ -96,6 +98,39 @@ pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> R
         .bind(&updated_at)
         .execute(&mut *tx)
         .await?;
+
+        // Handle tags
+        for tag_name in &entry.tags {
+            let tag_name = tag_name.trim().to_lowercase();
+            if tag_name.is_empty() {
+                continue;
+            }
+
+            let tag_id: Option<(String,)> = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
+                .bind(&tag_name)
+                .fetch_optional(&mut *tx)
+                .await?;
+
+            let tag_id = match tag_id {
+                Some((id,)) => id,
+                None => {
+                    let new_id = Uuid::new_v4().to_string();
+                    sqlx::query("INSERT INTO tags (id, name, created_at) VALUES (?, ?, ?)")
+                        .bind(&new_id)
+                        .bind(&tag_name)
+                        .bind(&now)
+                        .execute(&mut *tx)
+                        .await?;
+                    new_id
+                }
+            };
+
+            sqlx::query("INSERT OR IGNORE INTO entry_tags (entry_id, tag_id) VALUES (?, ?)")
+                .bind(&id)
+                .bind(&tag_id)
+                .execute(&mut *tx)
+                .await?;
+        }
 
         // Create visit records for visited count
         if let Some(visited) = entry.visited {
