@@ -8,7 +8,11 @@ pub mod routes;
 use axum::{routing::get, Router};
 use sqlx::SqlitePool;
 use time::Duration;
-use tower_http::services::ServeDir;
+use tower_http::{
+    services::ServeDir,
+    trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
+};
+use tracing::Level;
 use tower_sessions::{cookie::SameSite, Expiry, SessionManagerLayer};
 use tower_sessions_sqlx_store::SqliteStore;
 
@@ -49,5 +53,10 @@ pub async fn build_app(pool: SqlitePool, secure_cookies: bool) -> Router {
         .merge(routes::export::router())
         .nest_service("/static", ServeDir::new("static"))
         .layer(session_layer)
+        .layer(
+            TraceLayer::new_for_http()
+                .on_request(DefaultOnRequest::new().level(Level::INFO))
+                .on_response(DefaultOnResponse::new().level(Level::INFO)),
+        )
         .with_state(state)
 }
