@@ -135,6 +135,8 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_entries))
         .route("/all", get(list_all_entries))
+        .route("/hidden", get(list_hidden_entries))
+        .route("/no-visits", get(list_no_visits_entries))
         .route("/entries/new", get(new_entry_form))
         .route("/entries", post(create_entry))
         .route("/entries/{id}/edit", get(edit_entry_form))
@@ -264,73 +266,74 @@ async fn fetch_entries_for_user(db: &sqlx::SqlitePool, user_id: &str) -> Vec<(En
     entries.into_iter().map(|e| e.into_entry_and_count()).collect()
 }
 
-async fn list_entries(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-) -> Result<impl IntoResponse, AppError> {
-    let entries = fetch_entries_for_user(&state.db, &user.id).await;
+fn build_entry_view(entry: Entry, visit_count: i64, now: DateTime<Utc>) -> EntryView {
+    let (is_available, available_in) = calculate_availability(&entry, now);
+    EntryView {
+        id: entry.id,
+        url: entry.url,
+        title: entry.title,
+        description: entry.description,
+        last_viewed: format_last_viewed(&entry.dismissed_at, now),
+        available_in,
+        is_available,
+        visit_count,
+    }
+}
 
+async fn list_filtered_entries(
+    db: &sqlx::SqlitePool,
+    user: User,
+    filter: &str,
+) -> Result<Html<String>, AppError> {
+    let entries = fetch_entries_for_user(db, &user.id).await;
     let now = Utc::now();
+
     let entry_views: Vec<EntryView> = entries
         .into_iter()
-        .filter_map(|(entry, visit_count)| {
-            let (is_available, available_in) = calculate_availability(&entry, now);
-            if !is_available {
-                return None;
-            }
-            Some(EntryView {
-                id: entry.id,
-                url: entry.url,
-                title: entry.title,
-                description: entry.description,
-                last_viewed: format_last_viewed(&entry.dismissed_at, now),
-                available_in,
-                is_available,
-                visit_count,
-            })
+        .map(|(entry, visit_count)| build_entry_view(entry, visit_count, now))
+        .filter(|ev| match filter {
+            "available" => ev.is_available,
+            "hidden" => !ev.is_available,
+            "no-visits" => ev.visit_count == 0,
+            _ => true, // "all"
         })
         .collect();
 
     let template = EntryListTemplate {
         entries: entry_views,
-        filter: "available".to_string(),
+        filter: filter.to_string(),
         static_hash: crate::STATIC_HASH,
         user: Some(user),
     };
     Ok(Html(template.render()?))
 }
 
+async fn list_entries(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    list_filtered_entries(&state.db, user, "available").await
+}
+
 async fn list_all_entries(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    let entries = fetch_entries_for_user(&state.db, &user.id).await;
+    list_filtered_entries(&state.db, user, "all").await
+}
 
-    let now = Utc::now();
-    let entry_views: Vec<EntryView> = entries
-        .into_iter()
-        .map(|(entry, visit_count)| {
-            let (is_available, available_in) = calculate_availability(&entry, now);
-            EntryView {
-                id: entry.id,
-                url: entry.url,
-                title: entry.title,
-                description: entry.description,
-                last_viewed: format_last_viewed(&entry.dismissed_at, now),
-                available_in,
-                is_available,
-                visit_count,
-            }
-        })
-        .collect();
+async fn list_hidden_entries(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    list_filtered_entries(&state.db, user, "hidden").await
+}
 
-    let template = EntryListTemplate {
-        entries: entry_views,
-        filter: "all".to_string(),
-        static_hash: crate::STATIC_HASH,
-        user: Some(user),
-    };
-    Ok(Html(template.render()?))
+async fn list_no_visits_entries(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+) -> Result<impl IntoResponse, AppError> {
+    list_filtered_entries(&state.db, user, "no-visits").await
 }
 
 async fn visit_entry(
