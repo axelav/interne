@@ -8,7 +8,7 @@
         {% if entry.is_some() %}Edit Link{% else %}Add Link{% endif %}
     </h1>
 
-    <form method="post" action="{% if let Some(e) = entry %}/entries/{{ e.id }}{% else %}/entries{% endif %}">
+    <form id="entry-form" method="post" action="{% if let Some(e) = entry %}/entries/{{ e.id }}{% else %}/entries{% endif %}">
         <div class="form-group">
             <label for="url">URL</label>
             <input
@@ -96,20 +96,21 @@
             </select>
         </div>
 
-        <div class="form-actions">
-            <button type="submit">Save</button>
-            <a href="/">Cancel</a>
-            {% if entry.is_some() %}
-            <button
-                type="button"
-                class="link-button delete-button"
-                hx-delete="/entries/{{ entry.as_ref().unwrap().id }}"
-                hx-confirm="Are you sure you want to delete this link?"
-            >
-                Delete
-            </button>
-            {% endif %}
-        </div>
     </form>
+
+    <div class="form-actions">
+        <button type="submit" form="entry-form">Save</button>
+        <a href="/">Cancel</a>
+        {% if entry.is_some() %}
+        <button
+            type="button"
+            class="link-button delete-button"
+            hx-delete="/entries/{{ entry.as_ref().unwrap().id }}"
+            hx-confirm="Are you sure you want to delete this link?"
+        >
+            Delete
+        </button>
+        {% endif %}
+    </div>
 </div>
 {% endblock %}
