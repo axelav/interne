@@ -30,3 +30,8 @@ Add a tag cloud index page and tag detail drill-down page. Tags already exist in
 - CSS additions: `.tag-cloud` container, size/color scaling
 - Nav update in `base.html`: add "Tags" link with active state
 - No new DB tables or migrations — queries existing `tags` and `entry_tags` joined to `entries`, scoped by user ID
+
+## Future Considerations
+
+- **Collection-shared entries in tag views:** Currently the tag cloud and tag detail queries only include entries owned directly by the user (`e.user_id = ?`). The main entry list also includes entries shared via collections (`OR e.collection_id IN (...)`). If tags on collection-shared entries should appear in the tag views, update both queries in `src/routes/tags.rs` to mirror the collection member pattern from `fetch_entries_for_user`.
+- **Public tags page:** When public entries land, add a public-facing tag cloud showing tags across all users' public entries.
