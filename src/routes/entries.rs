@@ -135,8 +135,8 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(list_entries))
         .route("/all", get(list_all_entries))
-        .route("/hidden", get(list_hidden_entries))
-        .route("/no-visits", get(list_no_visits_entries))
+        .route("/waiting", get(list_waiting_entries))
+        .route("/unseen", get(list_unseen_entries))
         .route("/entries/new", get(new_entry_form))
         .route("/entries", post(create_entry))
         .route("/entries/{id}/edit", get(edit_entry_form))
@@ -292,9 +292,9 @@ async fn list_filtered_entries(
         .into_iter()
         .map(|(entry, visit_count)| build_entry_view(entry, visit_count, now))
         .filter(|ev| match filter {
-            "available" => ev.is_available,
-            "hidden" => !ev.is_available,
-            "no-visits" => ev.visit_count == 0,
+            "ready" => ev.is_available,
+            "waiting" => !ev.is_available,
+            "unseen" => ev.visit_count == 0,
             _ => true, // "all"
         })
         .collect();
@@ -312,7 +312,7 @@ async fn list_entries(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    list_filtered_entries(&state.db, user, "available").await
+    list_filtered_entries(&state.db, user, "ready").await
 }
 
 async fn list_all_entries(
@@ -322,18 +322,18 @@ async fn list_all_entries(
     list_filtered_entries(&state.db, user, "all").await
 }
 
-async fn list_hidden_entries(
+async fn list_waiting_entries(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    list_filtered_entries(&state.db, user, "hidden").await
+    list_filtered_entries(&state.db, user, "waiting").await
 }
 
-async fn list_no_visits_entries(
+async fn list_unseen_entries(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
 ) -> Result<impl IntoResponse, AppError> {
-    list_filtered_entries(&state.db, user, "no-visits").await
+    list_filtered_entries(&state.db, user, "unseen").await
 }
 
 async fn visit_entry(

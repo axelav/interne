@@ -4,11 +4,11 @@
 
 {% block header_left %}
 <div id="view-filter" class="view-filter">
-    <a href="/" class="view-filter-link{% if filter == "available" %} active{% endif %}" hx-get="/" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Available</a>
+    <a href="/" class="view-filter-link{% if filter == "ready" %} active{% endif %}" hx-get="/" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Ready</a>
     /
-    <a href="/hidden" class="view-filter-link{% if filter == "hidden" %} active{% endif %}" hx-get="/hidden" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Hidden</a>
+    <a href="/waiting" class="view-filter-link{% if filter == "waiting" %} active{% endif %}" hx-get="/waiting" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Waiting</a>
     /
-    <a href="/no-visits" class="view-filter-link{% if filter == "no-visits" %} active{% endif %}" hx-get="/no-visits" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">No Visits</a>
+    <a href="/unseen" class="view-filter-link{% if filter == "unseen" %} active{% endif %}" hx-get="/unseen" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Unseen</a>
     /
     <a href="/all" class="view-filter-link{% if filter == "all" %} active{% endif %}" hx-get="/all" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">All</a>
 </div>
@@ -24,12 +24,12 @@
 <div id="entry-list" class="entry-list">
     {% if entries.is_empty() %}
     <p class="empty">
-        {% if filter == "available" %}
+        {% if filter == "ready" %}
             Nothing due. Go outside!
-        {% else if filter == "hidden" %}
-            Nothing hidden. Everything is due!
-        {% else if filter == "no-visits" %}
-            No unvisited links.
+        {% else if filter == "waiting" %}
+            Nothing waiting. Everything is ready!
+        {% else if filter == "unseen" %}
+            No unseen links.
         {% else %}
             No links yet. Add one!
         {% endif %}
