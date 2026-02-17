@@ -47,7 +47,6 @@ header {
 }
 
 .logo {
-    font-style: italic;
     font-size: 1.125rem;
     font-weight: 600;
     color: var(--black);
