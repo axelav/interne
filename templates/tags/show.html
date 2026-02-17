@@ -1,3 +1,21 @@
 {% extends "base.html" %}
+
 {% block title %}{{ tag_name }} - Interne{% endblock %}
-{% block content %}placeholder{% endblock %}
+
+{% block content %}
+<h1 class="page-heading">{{ tag_name }} ({{ entry_count }})</h1>
+
+{% if entries.is_empty() %}
+<p class="empty">No links with this tag.</p>
+{% else %}
+<div class="entry-list">
+    {% for entry in entries %}
+        {% include "entries/entry.html" %}
+    {% endfor %}
+</div>
+{% endif %}
+
+<p class="back-link">
+    <a href="/tags">&larr; Back to tags</a>
+</p>
+{% endblock %}
