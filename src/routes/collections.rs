@@ -18,7 +18,7 @@ use crate::AppState;
 #[template(path = "collections/list.html")]
 struct CollectionListTemplate {
     collections: Vec<CollectionView>,
-
+    static_hash: &'static str,
     user: Option<User>,
 }
 
@@ -27,7 +27,7 @@ struct CollectionListTemplate {
 struct CollectionFormTemplate {
     collection: Option<Collection>,
     errors: HashMap<String, String>,
-
+    static_hash: &'static str,
     user: Option<User>,
 }
 
@@ -37,7 +37,7 @@ struct CollectionShowTemplate {
     collection: Collection,
     members: Vec<User>,
     is_owner: bool,
-
+    static_hash: &'static str,
     user: Option<User>,
 }
 
@@ -150,7 +150,7 @@ async fn list_collections(
 
     let template = CollectionListTemplate {
         collections: views,
-
+        static_hash: crate::STATIC_HASH,
         user: Some(user),
     };
     Ok(Html(template.render()?))
@@ -160,7 +160,7 @@ async fn new_collection_form(AuthUser(user): AuthUser) -> Result<impl IntoRespon
     let template = CollectionFormTemplate {
         collection: None,
         errors: HashMap::new(),
-
+        static_hash: crate::STATIC_HASH,
         user: Some(user),
     };
     Ok(Html(template.render()?))
@@ -176,6 +176,7 @@ async fn create_collection(
         let template = CollectionFormTemplate {
             collection: None,
             errors,
+            static_hash: crate::STATIC_HASH,
             user: Some(user),
         };
         return Ok(Html(template.render()?).into_response());
@@ -268,7 +269,7 @@ async fn show_collection(
         is_owner: collection.owner_id == user.id,
         collection,
         members,
-
+        static_hash: crate::STATIC_HASH,
         user: Some(user),
     };
     Ok(Html(template.render()?).into_response())
@@ -294,7 +295,7 @@ async fn edit_collection_form(
     let template = CollectionFormTemplate {
         collection: Some(collection),
         errors: HashMap::new(),
-
+        static_hash: crate::STATIC_HASH,
         user: Some(user),
     };
     Ok(Html(template.render()?).into_response())
@@ -319,6 +320,7 @@ async fn update_collection(
         let template = CollectionFormTemplate {
             collection,
             errors,
+            static_hash: crate::STATIC_HASH,
             user: Some(user),
         };
         return Ok(Html(template.render()?).into_response());

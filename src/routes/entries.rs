@@ -20,7 +20,7 @@ use crate::AppState;
 struct EntryListTemplate {
     entries: Vec<EntryView>,
     filter: String,
-
+    static_hash: &'static str,
     user: Option<User>,
 }
 
@@ -86,7 +86,7 @@ struct EntryFormTemplate {
     collections: Vec<Collection>,
     tags_string: String,
     errors: HashMap<String, String>,
-
+    static_hash: &'static str,
     user: Option<User>,
 }
 
@@ -294,7 +294,7 @@ async fn list_entries(
     let template = EntryListTemplate {
         entries: entry_views,
         filter: "available".to_string(),
-
+        static_hash: crate::STATIC_HASH,
         user: Some(user),
     };
     Ok(Html(template.render()?))
@@ -327,7 +327,7 @@ async fn list_all_entries(
     let template = EntryListTemplate {
         entries: entry_views,
         filter: "all".to_string(),
-
+        static_hash: crate::STATIC_HASH,
         user: Some(user),
     };
     Ok(Html(template.render()?))
@@ -426,7 +426,7 @@ async fn new_entry_form(
         collections,
         tags_string: String::new(),
         errors: HashMap::new(),
-
+        static_hash: crate::STATIC_HASH,
         user: Some(user),
     };
     Ok(Html(template.render()?))
@@ -457,6 +457,7 @@ async fn create_entry(
             collections,
             tags_string: form.tags.as_deref().unwrap_or("").to_string(),
             errors,
+            static_hash: crate::STATIC_HASH,
             user: Some(user),
         };
         return Ok(Html(template.render()?).into_response());
@@ -567,7 +568,7 @@ async fn edit_entry_form(
         collections,
         tags_string,
         errors: HashMap::new(),
-
+        static_hash: crate::STATIC_HASH,
         user: Some(user),
     };
     Ok(Html(template.render()?).into_response())
@@ -612,6 +613,7 @@ async fn update_entry(
             collections,
             tags_string: form.tags.as_deref().unwrap_or("").to_string(),
             errors,
+            static_hash: crate::STATIC_HASH,
             user: Some(user),
         };
         return Ok(Html(template.render()?).into_response());

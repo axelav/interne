@@ -17,7 +17,7 @@ use crate::AppState;
 #[template(path = "login.html")]
 struct LoginTemplate {
     error: Option<String>,
-
+    static_hash: &'static str,
     user: Option<User>,
 }
 
@@ -36,7 +36,7 @@ pub fn router() -> Router<AppState> {
 async fn login_page() -> Result<impl IntoResponse, AppError> {
     let template = LoginTemplate {
         error: None,
-
+        static_hash: crate::STATIC_HASH,
         user: None,
     };
     Ok(Html(template.render()?))
@@ -63,7 +63,7 @@ async fn login_submit(
         None => {
             let template = LoginTemplate {
                 error: Some("Invalid invite code".to_string()),
-
+                static_hash: crate::STATIC_HASH,
                 user: None,
             };
             Ok(Html(template.render()?).into_response())

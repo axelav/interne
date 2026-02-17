@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Interne{% endblock %}</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <script src="/static/htmx.min.js" defer></script>
+    <link rel="stylesheet" href="/static/style.css?v={{ static_hash }}">
+    <script src="/static/htmx.min.js?v={{ static_hash }}" defer></script>
 </head>
 <body>
     <div class="container">
