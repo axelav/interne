@@ -110,10 +110,31 @@ header nav a.active {
     margin-top: 0.75rem;
 }
 
+#search-input {
+    flex: 1;
+    padding: 0.25rem 0.5rem;
+    border: var(--border);
+    border-radius: var(--radius);
+    font-size: 0.8125rem;
+    font-family: inherit;
+    background: var(--white);
+    color: var(--black);
+}
+
+#search-input:focus {
+    outline: none;
+    border-color: var(--gray-400);
+}
+
+#search-input::placeholder {
+    color: var(--gray-400);
+}
+
 .header-actions a {
     font-size: 0.8125rem;
     color: var(--gray-600);
     text-decoration: none;
+    white-space: nowrap;
 }
 
 .header-actions a:hover {

@@ -16,6 +16,7 @@
 
 {% block header_actions %}
 <div class="header-actions">
+    <input type="search" id="search-input" placeholder="Search links..." autocomplete="off" spellcheck="false">
     <a href="/entries/new">+ New Link</a>
 </div>
 {% endblock %}
@@ -40,5 +41,24 @@
         {% endfor %}
     {% endif %}
 </div>
+
+<script>
+(function() {
+    var input = document.getElementById('search-input');
+    var list = document.getElementById('entry-list');
+    var timer;
+    input.addEventListener('input', function() {
+        clearTimeout(timer);
+        timer = setTimeout(function() {
+            var q = input.value.toLowerCase();
+            var entries = list.querySelectorAll('.entry');
+            for (var i = 0; i < entries.length; i++) {
+                var haystack = entries[i].getAttribute('data-search').toLowerCase();
+                entries[i].style.display = (!q || haystack.indexOf(q) !== -1) ? '' : 'none';
+            }
+        }, 150);
+    });
+})();
+</script>
 {% endblock %}
 

@@ -39,6 +39,7 @@ pub struct EntryView {
     pub available_in: Option<String>,
     pub is_available: bool,
     pub visit_count: i64,
+    pub tags: Vec<String>,
 }
 
 /// Entry with visit count for queries that join entries with visits
@@ -266,7 +267,7 @@ async fn fetch_entries_for_user(db: &sqlx::SqlitePool, user_id: &str) -> Vec<(En
     entries.into_iter().map(|e| e.into_entry_and_count()).collect()
 }
 
-pub fn build_entry_view(entry: Entry, visit_count: i64, now: DateTime<Utc>) -> EntryView {
+pub fn build_entry_view(entry: Entry, visit_count: i64, tags: Vec<String>, now: DateTime<Utc>) -> EntryView {
     let (is_available, available_in) = calculate_availability(&entry, now);
     EntryView {
         id: entry.id,
@@ -277,7 +278,29 @@ pub fn build_entry_view(entry: Entry, visit_count: i64, now: DateTime<Utc>) -> E
         available_in,
         is_available,
         visit_count,
+        tags,
     }
+}
+
+async fn fetch_tags_for_entries(db: &sqlx::SqlitePool, entry_ids: &[String]) -> HashMap<String, Vec<String>> {
+    if entry_ids.is_empty() {
+        return HashMap::new();
+    }
+    let placeholders = entry_ids.iter().map(|_| "?").collect::<Vec<_>>().join(",");
+    let query = format!(
+        "SELECT et.entry_id, t.name FROM entry_tags et JOIN tags t ON t.id = et.tag_id WHERE et.entry_id IN ({})",
+        placeholders
+    );
+    let mut q = sqlx::query_as::<_, (String, String)>(&query);
+    for id in entry_ids {
+        q = q.bind(id);
+    }
+    let rows: Vec<(String, String)> = q.fetch_all(db).await.unwrap_or_default();
+    let mut map: HashMap<String, Vec<String>> = HashMap::new();
+    for (entry_id, tag_name) in rows {
+        map.entry(entry_id).or_default().push(tag_name);
+    }
+    map
 }
 
 async fn list_filtered_entries(
@@ -288,9 +311,15 @@ async fn list_filtered_entries(
     let entries = fetch_entries_for_user(db, &user.id).await;
     let now = Utc::now();
 
+    let entry_ids: Vec<String> = entries.iter().map(|(e, _)| e.id.clone()).collect();
+    let mut tags_map = fetch_tags_for_entries(db, &entry_ids).await;
+
     let entry_views: Vec<EntryView> = entries
         .into_iter()
-        .map(|(entry, visit_count)| build_entry_view(entry, visit_count, now))
+        .map(|(entry, visit_count)| {
+            let tags = tags_map.remove(&entry.id).unwrap_or_default();
+            build_entry_view(entry, visit_count, tags, now)
+        })
         .filter(|ev| match filter {
             "ready" => ev.is_available,
             "waiting" => !ev.is_available,
@@ -390,19 +419,18 @@ async fn visit_entry(
         .await?;
 
     let now_dt = Utc::now();
-    let (is_available, available_in) = calculate_availability(&entry, now_dt);
+
+    let tags: Vec<(String,)> = sqlx::query_as(
+        "SELECT t.name FROM tags t JOIN entry_tags et ON et.tag_id = t.id WHERE et.entry_id = ?"
+    )
+    .bind(&entry.id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap_or_default();
+    let tags: Vec<String> = tags.into_iter().map(|(name,)| name).collect();
 
     let template = EntryTemplate {
-        entry: EntryView {
-            id: entry.id,
-            url: entry.url,
-            title: entry.title,
-            description: entry.description,
-            last_viewed: format_last_viewed(&entry.dismissed_at, now_dt),
-            available_in,
-            is_available,
-            visit_count: visit_count.0,
-        },
+        entry: build_entry_view(entry, visit_count.0, tags, now_dt),
     };
     Ok(Html(template.render()?))
 }
