@@ -5,11 +5,16 @@ pub mod error;
 pub mod models;
 pub mod routes;
 
+pub const STATIC_HASH: &str = env!("STATIC_HASH");
+
 use axum::{routing::get, Router};
 use sqlx::SqlitePool;
 use time::Duration;
+use axum::http::{header, HeaderValue};
+use tower::ServiceBuilder;
 use tower_http::{
     services::ServeDir,
+    set_header::SetResponseHeaderLayer,
     trace::{DefaultOnRequest, DefaultOnResponse, TraceLayer},
 };
 use tracing::Level;
@@ -51,7 +56,15 @@ pub async fn build_app(pool: SqlitePool, secure_cookies: bool) -> Router {
         .merge(routes::entries::router())
         .merge(routes::collections::router())
         .merge(routes::export::router())
-        .nest_service("/static", ServeDir::new("static"))
+        .nest_service(
+            "/static",
+            ServiceBuilder::new()
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::CACHE_CONTROL,
+                    HeaderValue::from_static("public, max-age=86400"),
+                ))
+                .service(ServeDir::new("static")),
+        )
         .layer(session_layer)
         .layer(
             TraceLayer::new_for_http()
