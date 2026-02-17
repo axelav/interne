@@ -31,6 +31,9 @@
             {% when None %}
                 Never viewed
         {% endmatch %}
+        {% if entry.visit_count > 0 %}
+            &middot; {{ entry.visit_count }} visit{% if entry.visit_count != 1 %}s{% endif %}
+        {% endif %}
         {% if let Some(available) = entry.available_in %}
             &middot; Available {{ available }}
         {% endif %}
