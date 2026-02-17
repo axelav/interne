@@ -266,7 +266,7 @@ async fn fetch_entries_for_user(db: &sqlx::SqlitePool, user_id: &str) -> Vec<(En
     entries.into_iter().map(|e| e.into_entry_and_count()).collect()
 }
 
-fn build_entry_view(entry: Entry, visit_count: i64, now: DateTime<Utc>) -> EntryView {
+pub fn build_entry_view(entry: Entry, visit_count: i64, now: DateTime<Utc>) -> EntryView {
     let (is_available, available_in) = calculate_availability(&entry, now);
     EntryView {
         id: entry.id,

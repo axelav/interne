@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}Tags - Interne{% endblock %}
+
+{% block content %}
+{% if tags.is_empty() %}
+<p class="empty">No tags yet.</p>
+{% else %}
+<div class="tag-cloud">
+    {% for tag in tags %}
+    <a
+        href="/tags/{{ tag.name }}"
+        class="tag-cloud-item"
+        style="font-size: {{ tag.font_size }}; color: {{ tag.color }};"
+        title="{{ tag.count }} link{% if tag.count != 1 %}s{% endif %}"
+    >{{ tag.name }}</a>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

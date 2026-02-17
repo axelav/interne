@@ -56,6 +56,7 @@ pub async fn build_app(pool: SqlitePool, secure_cookies: bool) -> Router {
         .merge(routes::entries::router())
         .merge(routes::collections::router())
         .merge(routes::export::router())
+        .merge(routes::tags::router())
         .nest_service(
             "/static",
             ServiceBuilder::new()
