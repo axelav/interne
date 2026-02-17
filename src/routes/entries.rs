@@ -138,10 +138,10 @@ fn validate_entry_form(form: &EntryForm) -> HashMap<String, String> {
         errors.insert("duration".to_string(), "Duration must be at least 1".to_string());
     }
 
-    if !form.url.is_empty() {
-        if let Err(msg) = normalize_url(&form.url) {
-            errors.insert("url".to_string(), msg);
-        }
+    if form.url.trim().is_empty() {
+        errors.insert("url".to_string(), "URL is required".to_string());
+    } else if let Err(msg) = normalize_url(&form.url) {
+        errors.insert("url".to_string(), msg);
     }
 
     if form.title.trim().is_empty() {
@@ -1005,11 +1005,12 @@ mod tests {
     }
 
     #[test]
-    fn entry_form_empty_url_allowed() {
+    fn entry_form_empty_url_required() {
         let mut form = make_valid_entry_form();
         form.url = "".to_string();
         let errors = validate_entry_form(&form);
-        assert!(!errors.contains_key("url"));
+        assert!(errors.contains_key("url"));
+        assert_eq!(errors["url"], "URL is required");
     }
 
     #[test]

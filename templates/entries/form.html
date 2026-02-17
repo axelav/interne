@@ -124,6 +124,8 @@
             var s = v.trim();
             if (s.startsWith('http://') || s.startsWith('https://')) {
                 s = s.replace(/^https?:\/\//, '');
+            } else if (s.indexOf('://') !== -1) {
+                return 'Please enter a valid URL (e.g. example.com)';
             }
             var domain = s.split(/[/?#]/)[0];
             if (!domain.includes('.')) return 'Please enter a valid URL (e.g. example.com)';
