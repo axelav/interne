@@ -8,17 +8,16 @@
         {% if entry.is_some() %}Edit Link{% else %}Add Link{% endif %}
     </h1>
 
-    <form id="entry-form" method="post" action="{% if let Some(e) = entry %}/entries/{{ e.id }}{% else %}/entries{% endif %}" autocomplete="off">
+    <form id="entry-form" method="post" action="{% if let Some(e) = entry %}/entries/{{ e.id }}{% else %}/entries{% endif %}" autocomplete="off" novalidate>
         <div class="form-group">
             <label for="url">URL</label>
             <input
-                type="url"
+                type="text"
                 id="url"
                 name="url"
-                required
                 autofocus
                 value="{% if let Some(e) = entry %}{{ e.url }}{% endif %}"
-                placeholder="https://example.com"
+                placeholder="example.com"
             >
             <div class="error-message">{% if let Some(err) = errors.get("url") %}{{ err }}{% endif %}</div>
         </div>
@@ -29,7 +28,6 @@
                 type="text"
                 id="title"
                 name="title"
-                required
                 value="{% if let Some(e) = entry %}{{ e.title }}{% endif %}"
             >
             <div class="error-message">{% if let Some(err) = errors.get("title") %}{{ err }}{% endif %}</div>
@@ -54,8 +52,6 @@
                     type="number"
                     id="duration"
                     name="duration"
-                    required
-                    min="1"
                     value="{% if let Some(e) = entry %}{{ e.duration }}{% else %}1{% endif %}"
                 >
                 <div class="error-message">{% if let Some(err) = errors.get("duration") %}{{ err }}{% endif %}</div>
@@ -119,6 +115,67 @@
 
 <script>
 (function() {
+    var form = document.getElementById('entry-form');
+
+    var rules = {
+        url: function(v) {
+            if (!v.trim()) return 'URL is required';
+            // Loose check: must have a dot somewhere in the domain portion
+            var s = v.trim();
+            if (s.startsWith('http://') || s.startsWith('https://')) {
+                s = s.replace(/^https?:\/\//, '');
+            }
+            var domain = s.split(/[/?#]/)[0];
+            if (!domain.includes('.')) return 'Please enter a valid URL (e.g. example.com)';
+            return '';
+        },
+        title: function(v) {
+            if (!v.trim()) return 'Title is required';
+            if (v.length > 500) return 'Title must be under 500 characters';
+            return '';
+        },
+        duration: function(v) {
+            if (!v || parseInt(v, 10) < 1) return 'Duration must be at least 1';
+            return '';
+        },
+        description: function(v) {
+            if (v && v.length > 5000) return 'Description must be under 5000 characters';
+            return '';
+        }
+    };
+
+    function showError(name, msg) {
+        var input = form.querySelector('[name="' + name + '"]');
+        var errDiv = input.closest('.form-group').querySelector('.error-message');
+        if (errDiv) errDiv.textContent = msg;
+    }
+
+    function validateField(name) {
+        var input = form.querySelector('[name="' + name + '"]');
+        if (!input || !rules[name]) return true;
+        var msg = rules[name](input.value);
+        showError(name, msg);
+        return !msg;
+    }
+
+    // Validate on blur
+    ['url', 'title', 'duration', 'description'].forEach(function(name) {
+        var input = form.querySelector('[name="' + name + '"]');
+        if (input) {
+            input.addEventListener('blur', function() { validateField(name); });
+        }
+    });
+
+    // Validate all on submit
+    form.addEventListener('submit', function(e) {
+        var valid = true;
+        ['url', 'title', 'duration', 'description'].forEach(function(name) {
+            if (!validateField(name)) valid = false;
+        });
+        if (!valid) e.preventDefault();
+    });
+
+    // Character counter for description
     var ta = document.getElementById('description');
     var counter = document.getElementById('desc-count');
     var max = 5000;
