@@ -16,8 +16,10 @@
                     {% block header_left %}{% endblock %}
                 </div>
                 <nav>
+                    {% if user.is_some() %}
                     <a href="/">Links</a>
                     <a href="/collections">Collections</a>
+                    {% endif %}
                     <span class="date" id="clock"></span>
                 </nav>
             </div>
@@ -29,8 +31,8 @@
         </main>
 
         <footer>
-            <a href="/export">Export</a>
             {% if user.is_some() %}
+            <a href="/export">Export</a>
             <form action="/logout" method="post" style="display: inline;">
                 <button type="submit" class="link-button">Logout</button>
             </form>
