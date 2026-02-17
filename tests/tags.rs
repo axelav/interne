@@ -117,3 +117,59 @@ async fn tag_cloud_has_inline_styles() {
     assert!(html.contains("font-size:"));
     assert!(html.contains("hsl("));
 }
+
+#[tokio::test]
+async fn tag_search_requires_auth() {
+    let app = TestApp::new().await;
+    let resp = app.get("/api/tags/search?q=r", None).await;
+    assert!(resp.status().is_redirection());
+}
+
+#[tokio::test]
+async fn tag_search_returns_matching_tags() {
+    let app = TestApp::new().await;
+    let (_user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    let body = "url=https%3A%2F%2Fexample.com&title=Entry&description=&duration=3&interval=days&tags=rust%2C+music%2C+reading&collection_id=";
+    app.post_form("/entries", body, Some(&cookie)).await;
+
+    let resp = app.get("/api/tags/search?q=r", Some(&cookie)).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(html.contains("rust"));
+    assert!(html.contains("reading"));
+    assert!(!html.contains("music"));
+}
+
+#[tokio::test]
+async fn tag_search_empty_for_no_match() {
+    let app = TestApp::new().await;
+    let (_user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    let body = "url=https%3A%2F%2Fexample.com&title=Entry&description=&duration=3&interval=days&tags=rust&collection_id=";
+    app.post_form("/entries", body, Some(&cookie)).await;
+
+    let resp = app.get("/api/tags/search?q=zzz", Some(&cookie)).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(html.is_empty());
+}
+
+#[tokio::test]
+async fn tag_search_scoped_to_user() {
+    let app = TestApp::new().await;
+    let (_user1_id, invite1) = app.create_user("User 1").await;
+    let cookie1 = app.login(&invite1).await;
+
+    let body = "url=https%3A%2F%2Fexample.com&title=Entry&description=&duration=3&interval=days&tags=secret&collection_id=";
+    app.post_form("/entries", body, Some(&cookie1)).await;
+
+    let (_user2_id, invite2) = app.create_user("User 2").await;
+    let cookie2 = app.login(&invite2).await;
+
+    let resp = app.get("/api/tags/search?q=sec", Some(&cookie2)).await;
+    let html = body_string(resp).await;
+    assert!(!html.contains("secret"));
+}
