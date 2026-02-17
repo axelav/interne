@@ -43,7 +43,7 @@ header {
 .header-top {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: baseline;
 }
 
 .logo {
@@ -57,7 +57,7 @@ header {
 
 header nav {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 1rem;
 }
 
@@ -74,16 +74,13 @@ header nav a.active {
 
 .header-left {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 1rem;
 }
 
 .view-filter {
     font-size: 0.8125rem;
     color: var(--gray-400);
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
 }
 
 .view-filter-link {

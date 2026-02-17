@@ -4,14 +4,13 @@
 
 {% block header_left %}
 <div id="view-filter" class="view-filter">
-    View
-    {% if filter == "available" %}<span class="view-filter-link active">Available</span>{% else %}<a href="/" class="view-filter-link" hx-get="/" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Available</a>{% endif %}
+    <a href="/" class="view-filter-link{% if filter == "available" %} active{% endif %}" hx-get="/" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Available</a>
     /
-    {% if filter == "hidden" %}<span class="view-filter-link active">Hidden</span>{% else %}<a href="/hidden" class="view-filter-link" hx-get="/hidden" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Hidden</a>{% endif %}
+    <a href="/hidden" class="view-filter-link{% if filter == "hidden" %} active{% endif %}" hx-get="/hidden" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Hidden</a>
     /
-    {% if filter == "no-visits" %}<span class="view-filter-link active">No Visits</span>{% else %}<a href="/no-visits" class="view-filter-link" hx-get="/no-visits" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">No Visits</a>{% endif %}
+    <a href="/no-visits" class="view-filter-link{% if filter == "no-visits" %} active{% endif %}" hx-get="/no-visits" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">No Visits</a>
     /
-    {% if filter == "all" %}<span class="view-filter-link active">All</span>{% else %}<a href="/all" class="view-filter-link" hx-get="/all" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">All</a>{% endif %}
+    <a href="/all" class="view-filter-link{% if filter == "all" %} active{% endif %}" hx-get="/all" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">All</a>
 </div>
 {% endblock %}
 
