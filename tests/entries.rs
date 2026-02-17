@@ -517,3 +517,135 @@ async fn update_entry_replaces_tags() {
     let linked: Vec<&str> = links.iter().map(|(n,)| n.as_str()).collect();
     assert_eq!(linked, vec!["api", "python"]);
 }
+
+#[tokio::test]
+async fn waiting_shows_only_not_yet_due_entries() {
+    let app = TestApp::new().await;
+    let (user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    let now = chrono::Utc::now();
+    let now_str = now.to_rfc3339();
+
+    // Available entry (dismissed long ago)
+    let e1 = uuid::Uuid::new_v4().to_string();
+    let old = (now - chrono::Duration::days(30)).to_rfc3339();
+    sqlx::query(
+        "INSERT INTO entries (id, user_id, url, title, duration, interval, dismissed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&e1)
+    .bind(&user_id)
+    .bind("https://example.com/1")
+    .bind("Ready Entry")
+    .bind(3)
+    .bind("days")
+    .bind(&old)
+    .bind(&now_str)
+    .bind(&now_str)
+    .execute(&app.db)
+    .await
+    .unwrap();
+
+    // Not-yet-due entry (dismissed just now)
+    let e2 = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO entries (id, user_id, url, title, duration, interval, dismissed_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&e2)
+    .bind(&user_id)
+    .bind("https://example.com/2")
+    .bind("Waiting Entry")
+    .bind(3)
+    .bind("days")
+    .bind(&now_str)
+    .bind(&now_str)
+    .bind(&now_str)
+    .execute(&app.db)
+    .await
+    .unwrap();
+
+    // /waiting should show only the not-yet-due entry
+    let resp = app.get("/waiting", Some(&cookie)).await;
+    let html = body_string(resp).await;
+    assert!(html.contains("Waiting Entry"));
+    assert!(!html.contains("Ready Entry"));
+}
+
+#[tokio::test]
+async fn unseen_shows_only_unvisited_entries() {
+    let app = TestApp::new().await;
+    let (user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Entry with no visits (unseen)
+    let e1 = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO entries (id, user_id, url, title, duration, interval, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&e1)
+    .bind(&user_id)
+    .bind("https://example.com/1")
+    .bind("Unseen Entry")
+    .bind(3)
+    .bind("days")
+    .bind(&now)
+    .bind(&now)
+    .execute(&app.db)
+    .await
+    .unwrap();
+
+    // Entry with a visit (seen)
+    let e2 = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO entries (id, user_id, url, title, duration, interval, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .bind(&e2)
+    .bind(&user_id)
+    .bind("https://example.com/2")
+    .bind("Seen Entry")
+    .bind(3)
+    .bind("days")
+    .bind(&now)
+    .bind(&now)
+    .execute(&app.db)
+    .await
+    .unwrap();
+
+    // Add a visit for the seen entry
+    let visit_id = uuid::Uuid::new_v4().to_string();
+    sqlx::query(
+        "INSERT INTO visits (id, entry_id, user_id, visited_at) VALUES (?, ?, ?, ?)",
+    )
+    .bind(&visit_id)
+    .bind(&e2)
+    .bind(&user_id)
+    .bind(&now)
+    .execute(&app.db)
+    .await
+    .unwrap();
+
+    // /unseen should show only the unvisited entry
+    let resp = app.get("/unseen", Some(&cookie)).await;
+    let html = body_string(resp).await;
+    assert!(html.contains("Unseen Entry"));
+    assert!(!html.contains("Seen Entry"));
+}
+
+#[tokio::test]
+async fn create_entry_with_long_description_shows_error() {
+    let app = TestApp::new().await;
+    let (_user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    let long_desc = "a".repeat(5001);
+    let body = format!(
+        "url=https%3A%2F%2Fexample.com&title=Test&description={}&duration=3&interval=days&tags=&collection_id=",
+        long_desc
+    );
+    let resp = app.post_form("/entries", &body, Some(&cookie)).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(html.contains("Description must be under 5000 characters"));
+}

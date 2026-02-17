@@ -997,4 +997,20 @@ mod tests {
         let errors = validate_entry_form(&form);
         assert!(errors.contains_key("duration"));
     }
+
+    #[test]
+    fn entry_form_description_too_long() {
+        let mut form = make_valid_entry_form();
+        form.description = Some("a".repeat(5001));
+        let errors = validate_entry_form(&form);
+        assert!(errors.contains_key("description"));
+    }
+
+    #[test]
+    fn entry_form_description_at_limit_ok() {
+        let mut form = make_valid_entry_form();
+        form.description = Some("a".repeat(5000));
+        let errors = validate_entry_form(&form);
+        assert!(!errors.contains_key("description"));
+    }
 }
