@@ -55,14 +55,14 @@ fn build_tag_cloud(tags: Vec<TagWithCount>) -> Vec<TagCloudItem> {
     let min_size: f64 = 0.75;
     let max_size: f64 = 2.5;
 
-    // Cool color palette: light teal (low) to deep indigo (high)
-    // HSL: hue 180 (teal) -> 260 (indigo), saturation 40-60%, lightness 70% -> 35%
-    let min_hue: f64 = 180.0;
+    // Cool color palette: steel blue (low) to deep indigo (high)
+    // HSL: hue 210 (blue) -> 260 (indigo), saturation 45-55%, lightness 55% -> 35%
+    let min_hue: f64 = 210.0;
     let max_hue: f64 = 260.0;
-    let min_sat: f64 = 40.0;
-    let max_sat: f64 = 60.0;
-    let max_light: f64 = 70.0; // light for low count
-    let min_light: f64 = 35.0; // dark for high count
+    let min_sat: f64 = 45.0;
+    let max_sat: f64 = 55.0;
+    let max_light: f64 = 55.0; // steel blue for low count
+    let min_light: f64 = 35.0; // deep indigo for high count
 
     tags.into_iter()
         .map(|tag| {
