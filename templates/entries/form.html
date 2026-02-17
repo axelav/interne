@@ -71,13 +71,16 @@
 
         <div class="form-group">
             <label for="tags">Tags</label>
-            <input
-                type="text"
-                id="tags"
-                name="tags"
-                value="{{ tags_string }}"
-                placeholder="comma, separated, tags"
-            >
+            <div class="tags-autocomplete-wrapper">
+                <input
+                    type="text"
+                    id="tags"
+                    name="tags"
+                    value="{{ tags_string }}"
+                    placeholder="comma, separated, tags"
+                >
+                <div class="tags-autocomplete" id="tags-autocomplete"></div>
+            </div>
         </div>
 
         <div class="form-group">
@@ -193,6 +196,119 @@
     }
     ta.addEventListener('input', update);
     update();
+})();
+</script>
+
+<script>
+(function() {
+    var input = document.getElementById('tags');
+    var dropdown = document.getElementById('tags-autocomplete');
+    if (!input || !dropdown) return;
+
+    var debounceTimer = null;
+    var activeIndex = -1;
+
+    function getCurrentSegment() {
+        var parts = input.value.split(',');
+        return parts[parts.length - 1].trim();
+    }
+
+    function getExistingTags() {
+        return input.value.split(',')
+            .map(function(s) { return s.trim().toLowerCase(); })
+            .filter(function(s) { return s.length > 0; });
+    }
+
+    function replaceCurrentSegment(tagName) {
+        var parts = input.value.split(',');
+        if (parts.length === 1) {
+            parts[0] = tagName;
+        } else {
+            parts[parts.length - 1] = ' ' + tagName;
+        }
+        input.value = parts.join(',') + ', ';
+        input.focus();
+        hideDropdown();
+    }
+
+    function showDropdown(html) {
+        dropdown.innerHTML = html;
+        dropdown.style.display = html ? 'block' : 'none';
+        activeIndex = -1;
+    }
+
+    function hideDropdown() {
+        dropdown.style.display = 'none';
+        dropdown.innerHTML = '';
+        activeIndex = -1;
+    }
+
+    function updateActiveItem() {
+        var items = dropdown.querySelectorAll('.autocomplete-item');
+        items.forEach(function(el) { el.classList.remove('active'); });
+        if (activeIndex >= 0 && activeIndex < items.length) {
+            items[activeIndex].classList.add('active');
+            items[activeIndex].scrollIntoView({ block: 'nearest' });
+        }
+    }
+
+    input.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        var segment = getCurrentSegment();
+        if (!segment) {
+            hideDropdown();
+            return;
+        }
+        debounceTimer = setTimeout(function() {
+            fetch('/api/tags/search?q=' + encodeURIComponent(segment.toLowerCase()))
+                .then(function(r) { return r.text(); })
+                .then(function(html) {
+                    var existing = getExistingTags();
+                    var temp = document.createElement('div');
+                    temp.innerHTML = html;
+                    var buttons = temp.querySelectorAll('.autocomplete-item');
+                    buttons.forEach(function(btn) {
+                        if (existing.indexOf(btn.getAttribute('data-value')) !== -1) {
+                            btn.remove();
+                        }
+                    });
+                    showDropdown(temp.innerHTML);
+                });
+        }, 300);
+    });
+
+    input.addEventListener('keydown', function(e) {
+        var items = dropdown.querySelectorAll('.autocomplete-item');
+        if (!items.length || dropdown.style.display === 'none') return;
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            activeIndex = (activeIndex + 1) % items.length;
+            updateActiveItem();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            activeIndex = (activeIndex - 1 + items.length) % items.length;
+            updateActiveItem();
+        } else if (e.key === 'Enter' && activeIndex >= 0) {
+            e.preventDefault();
+            replaceCurrentSegment(items[activeIndex].getAttribute('data-value'));
+        } else if (e.key === 'Escape') {
+            hideDropdown();
+        }
+    });
+
+    dropdown.addEventListener('click', function(e) {
+        var item = e.target.closest('.autocomplete-item');
+        if (item) {
+            replaceCurrentSegment(item.getAttribute('data-value'));
+        }
+    });
+
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.tags-autocomplete-wrapper')) {
+            hideDropdown();
+        }
+    });
 })();
 </script>
 {% endblock %}
