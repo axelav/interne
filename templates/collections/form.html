@@ -8,7 +8,7 @@
         {% if collection.is_some() %}Edit Collection{% else %}New Collection{% endif %}
     </h1>
 
-    <form method="post" action="{% if let Some(c) = collection %}/collections/{{ c.id }}{% else %}/collections{% endif %}">
+    <form method="post" action="{% if let Some(c) = collection %}/collections/{{ c.id }}{% else %}/collections{% endif %}" autocomplete="off">
         <div class="form-group">
             <label for="name">Name</label>
             <input

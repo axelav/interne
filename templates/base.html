@@ -34,7 +34,7 @@
         <footer>
             {% if user.is_some() %}
             <a href="/export">Export</a>
-            <form action="/logout" method="post" style="display: inline;">
+            <form action="/logout" method="post" style="display: inline;" autocomplete="off">
                 <button type="submit" class="link-button">Logout</button>
             </form>
             {% endif %}

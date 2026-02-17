@@ -10,7 +10,7 @@
     <div class="invite-box">
         <strong>Invite Code:</strong>
         <code class="invite-code">{{ collection.invite_code }}</code>
-        <form method="post" action="/collections/{{ collection.id }}/regenerate-invite" class="invite-actions">
+        <form method="post" action="/collections/{{ collection.id }}/regenerate-invite" class="invite-actions" autocomplete="off">
             <button type="submit" class="link-button">Regenerate</button>
         </form>
     </div>
@@ -44,7 +44,7 @@
 </div>
 
 {% if !is_owner %}
-<form method="post" action="/collections/{{ collection.id }}/leave" class="leave-form">
+<form method="post" action="/collections/{{ collection.id }}/leave" class="leave-form" autocomplete="off">
     <button type="submit" class="link-button delete-button"
         onclick="return confirm('Leave this collection?')">
         Leave Collection

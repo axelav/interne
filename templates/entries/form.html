@@ -8,7 +8,7 @@
         {% if entry.is_some() %}Edit Link{% else %}Add Link{% endif %}
     </h1>
 
-    <form id="entry-form" method="post" action="{% if let Some(e) = entry %}/entries/{{ e.id }}{% else %}/entries{% endif %}">
+    <form id="entry-form" method="post" action="{% if let Some(e) = entry %}/entries/{{ e.id }}{% else %}/entries{% endif %}" autocomplete="off">
         <div class="form-group">
             <label for="url">URL</label>
             <input
