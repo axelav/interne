@@ -3,19 +3,16 @@
 {% block title %}Interne{% endblock %}
 
 {% block header_left %}
-<a
-    id="view-toggle"
-    href="{% if filter == "available" %}/all{% else %}/{% endif %}"
-    class="view-toggle"
-    hx-get="{% if filter == "available" %}/all{% else %}/{% endif %}"
-    hx-target="#entry-list"
-    hx-select="#entry-list"
-    hx-select-oob="#view-toggle"
-    hx-swap="outerHTML"
-    hx-push-url="true"
->
-    {% if filter == "available" %}View All{% else %}View Available{% endif %}
-</a>
+<div id="view-filter" class="view-filter">
+    View
+    {% if filter == "available" %}<span class="view-filter-link active">Available</span>{% else %}<a href="/" class="view-filter-link" hx-get="/" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Available</a>{% endif %}
+    /
+    {% if filter == "hidden" %}<span class="view-filter-link active">Hidden</span>{% else %}<a href="/hidden" class="view-filter-link" hx-get="/hidden" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">Hidden</a>{% endif %}
+    /
+    {% if filter == "no-visits" %}<span class="view-filter-link active">No Visits</span>{% else %}<a href="/no-visits" class="view-filter-link" hx-get="/no-visits" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">No Visits</a>{% endif %}
+    /
+    {% if filter == "all" %}<span class="view-filter-link active">All</span>{% else %}<a href="/all" class="view-filter-link" hx-get="/all" hx-target="#entry-list" hx-select="#entry-list" hx-select-oob="#view-filter" hx-swap="outerHTML" hx-push-url="true">All</a>{% endif %}
+</div>
 {% endblock %}
 
 {% block header_actions %}
@@ -30,6 +27,10 @@
     <p class="empty">
         {% if filter == "available" %}
             Nothing due. Go outside!
+        {% else if filter == "hidden" %}
+            Nothing hidden. Everything is due!
+        {% else if filter == "no-visits" %}
+            No unvisited links.
         {% else %}
             No links yet. Add one!
         {% endif %}
