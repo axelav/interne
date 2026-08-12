@@ -444,6 +444,33 @@ async fn recovery_callback_consumes_attempt_before_rejecting_provider_denial() {
 }
 
 #[tokio::test]
+async fn denied_recovery_callback_validates_its_connection_claim_before_provider_error() {
+    let app = TestApp::new().await;
+    let issued = issue_invitation(&app.db, "Invited", Utc::now())
+        .await
+        .unwrap();
+    let (cookie, authorization_url, _) =
+        begin_connection_oauth(&app, &issued.plaintext_token).await;
+    let state = query_parameter(&authorization_url, "state");
+    sqlx::query("DROP TABLE auth_connection_tokens")
+        .execute(&app.db)
+        .await
+        .unwrap();
+
+    let (denied, logs) = capture_error_logs(app.get(
+        &format!("/auth/github/callback?code=must-not-exchange&error=access_denied&state={state}"),
+        Some(&cookie),
+    ))
+    .await;
+    let body = body_string(denied).await;
+
+    assert!(body.contains("invalid or expired"));
+    assert!(logs.contains("connection token database operation failed"));
+    assert!(!logs.contains("must-not-exchange"));
+    assert!(!logs.contains(&issued.plaintext_token));
+}
+
+#[tokio::test]
 async fn malformed_and_duplicate_recovery_queries_show_the_same_safe_error() {
     let app = TestApp::new().await;
     let issued = issue_invitation(&app.db, "Invited", Utc::now())

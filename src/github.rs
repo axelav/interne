@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{fmt, time::Duration};
 
 use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
@@ -15,6 +15,8 @@ use url::Url;
 const AUTHORIZE_URL: &str = "https://github.com/login/oauth/authorize";
 const TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const PROFILE_URL: &str = "https://api.github.com/user";
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GitHubProfile {
@@ -78,7 +80,14 @@ impl GitHubOAuthClient {
     ) -> Result<Self, GitHubError> {
         let token_url = Url::parse(TOKEN_URL).map_err(|_| GitHubError::ClientConfiguration)?;
         let profile_url = Url::parse(PROFILE_URL).map_err(|_| GitHubError::ClientConfiguration)?;
-        Self::build(client_id, client_secret, token_url, profile_url)
+        Self::build(
+            client_id,
+            client_secret,
+            token_url,
+            profile_url,
+            CONNECT_TIMEOUT,
+            REQUEST_TIMEOUT,
+        )
     }
 
     fn build(
@@ -86,9 +95,13 @@ impl GitHubOAuthClient {
         client_secret: impl Into<String>,
         token_url: Url,
         profile_url: Url,
+        connect_timeout: Duration,
+        request_timeout: Duration,
     ) -> Result<Self, GitHubError> {
         let http = Client::builder()
             .redirect(Policy::none())
+            .connect_timeout(connect_timeout)
+            .timeout(request_timeout)
             .build()
             .map_err(|_| GitHubError::ClientConfiguration)?;
 
@@ -108,7 +121,33 @@ impl GitHubOAuthClient {
         token_url: Url,
         profile_url: Url,
     ) -> Result<Self, GitHubError> {
-        Self::build(client_id, client_secret, token_url, profile_url)
+        Self::build(
+            client_id,
+            client_secret,
+            token_url,
+            profile_url,
+            CONNECT_TIMEOUT,
+            REQUEST_TIMEOUT,
+        )
+    }
+
+    #[cfg(test)]
+    fn new_with_endpoints_and_timeouts(
+        client_id: impl Into<String>,
+        client_secret: impl Into<String>,
+        token_url: Url,
+        profile_url: Url,
+        connect_timeout: Duration,
+        request_timeout: Duration,
+    ) -> Result<Self, GitHubError> {
+        Self::build(
+            client_id,
+            client_secret,
+            token_url,
+            profile_url,
+            connect_timeout,
+            request_timeout,
+        )
     }
 }
 
@@ -434,6 +473,40 @@ mod tests {
         assert_eq!(error, GitHubError::TokenExchange);
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].target, "/token");
+    }
+
+    #[tokio::test]
+    async fn stalled_token_exchange_returns_safe_stage_error_within_request_timeout() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let _request = read_request(&mut socket).await;
+            tokio::time::sleep(Duration::from_secs(2)).await;
+        });
+        let client = GitHubOAuthClient::new_with_endpoints_and_timeouts(
+            "client-id",
+            "client-secret",
+            base_url.join("token").unwrap(),
+            base_url.join("user").unwrap(),
+            Duration::from_millis(100),
+            Duration::from_millis(100),
+        )
+        .unwrap();
+
+        let result = timeout(
+            Duration::from_secs(1),
+            client.exchange_code(
+                &Url::parse("https://interne.test/auth/github/callback").unwrap(),
+                "secret-code",
+                "secret-verifier",
+            ),
+        )
+        .await
+        .expect("the configured request timeout must bound a stalled response");
+        server.abort();
+
+        assert_eq!(result.unwrap_err(), GitHubError::TokenExchange);
     }
 
     #[tokio::test]

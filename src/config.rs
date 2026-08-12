@@ -27,6 +27,7 @@ pub struct ServerAuthConfig {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ConfigError {
     MissingVariable(&'static str),
+    BlankVariable(&'static str),
     InvalidPublicBaseUrl,
     InvalidSignupMode,
 }
@@ -37,6 +38,7 @@ impl fmt::Display for ConfigError {
             Self::MissingVariable(name) => {
                 write!(formatter, "missing required environment variable {name}")
             }
+            Self::BlankVariable(name) => write!(formatter, "{name} must not be blank"),
             Self::InvalidPublicBaseUrl => write!(
                 formatter,
                 "PUBLIC_BASE_URL must be a bare HTTPS origin or an HTTP literal loopback origin"
@@ -127,10 +129,9 @@ impl ServerAuthConfig {
     where
         F: FnMut(&str) -> Option<String>,
     {
-        let client_id =
-            lookup("GITHUB_CLIENT_ID").ok_or(ConfigError::MissingVariable("GITHUB_CLIENT_ID"))?;
-        let client_secret = lookup("GITHUB_CLIENT_SECRET")
-            .ok_or(ConfigError::MissingVariable("GITHUB_CLIENT_SECRET"))?;
+        let client_id = required_nonblank(lookup("GITHUB_CLIENT_ID"), "GITHUB_CLIENT_ID")?;
+        let client_secret =
+            required_nonblank(lookup("GITHUB_CLIENT_SECRET"), "GITHUB_CLIENT_SECRET")?;
         let public_base_url =
             lookup("PUBLIC_BASE_URL").ok_or(ConfigError::MissingVariable("PUBLIC_BASE_URL"))?;
         let signup_mode = match lookup("GITHUB_SIGNUP_MODE").as_deref() {
@@ -147,6 +148,14 @@ impl ServerAuthConfig {
             },
         })
     }
+}
+
+fn required_nonblank(value: Option<String>, name: &'static str) -> Result<String, ConfigError> {
+    let value = value.ok_or(ConfigError::MissingVariable(name))?;
+    if value.trim().is_empty() {
+        return Err(ConfigError::BlankVariable(name));
+    }
+    Ok(value)
 }
 
 #[cfg(test)]
@@ -278,5 +287,47 @@ mod tests {
         .unwrap();
 
         assert_eq!(config.auth.signup_mode, SignupMode::Public);
+    }
+
+    #[test]
+    fn github_credentials_reject_empty_and_whitespace_only_values_by_name() {
+        for key_to_blank in ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET"] {
+            for blank_value in ["", " \t\n"] {
+                let error = ServerAuthConfig::from_lookup(|key| match key {
+                    "GITHUB_CLIENT_ID" if key == key_to_blank => Some(blank_value.into()),
+                    "GITHUB_CLIENT_SECRET" if key == key_to_blank => Some(blank_value.into()),
+                    "GITHUB_CLIENT_ID" => Some("client-id".into()),
+                    "GITHUB_CLIENT_SECRET" => Some("client-secret".into()),
+                    "PUBLIC_BASE_URL" => Some("https://interne.honkytonk.in".into()),
+                    _ => None,
+                })
+                .expect_err("blank GitHub credentials must be rejected");
+
+                assert_eq!(
+                    error.to_string(),
+                    format!("{key_to_blank} must not be blank")
+                );
+                assert_eq!(
+                    format!("{error:?}"),
+                    format!("BlankVariable(\"{key_to_blank}\")")
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn server_auth_debug_redacts_both_github_credentials() {
+        let config = ServerAuthConfig::from_lookup(|key| match key {
+            "GITHUB_CLIENT_ID" => Some("sensitive-client-id".into()),
+            "GITHUB_CLIENT_SECRET" => Some("sensitive-client-secret".into()),
+            "PUBLIC_BASE_URL" => Some("https://interne.honkytonk.in".into()),
+            _ => None,
+        })
+        .unwrap();
+
+        let debug = format!("{config:?}");
+        assert!(!debug.contains("sensitive-client-id"));
+        assert!(!debug.contains("sensitive-client-secret"));
+        assert!(debug.contains("<redacted>"));
     }
 }

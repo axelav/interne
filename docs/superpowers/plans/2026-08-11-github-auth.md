@@ -1453,6 +1453,7 @@ Before production deployment, update the `interne` service in the `honkytonk-inf
 ## Future Work
 
 - [ ] Remove the legacy invite-code route, conditional form, Rust model field, SQLite column, and deprecated `create-user` alias after every existing user has connected GitHub.
+- [ ] Protect state-changing authentication confirmation forms from same-site sibling-origin submissions with synchronizer CSRF tokens or exact `Origin` validation.
 
 ## Implementation References
 

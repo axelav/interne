@@ -6,11 +6,17 @@ use interne::AuthServices;
 use interne::config::ServerAuthConfig;
 use interne::github::GitHubOAuthClient;
 use tokio::net::TcpListener;
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt::init();
     dotenvy::dotenv().ok();
+    let log_filter =
+        parse_log_filter(env::var("RUST_LOG").ok().as_deref()).unwrap_or_else(|error| {
+            eprintln!("Logging configuration error: {error}");
+            std::process::exit(1);
+        });
+    tracing_subscriber::fmt().with_env_filter(log_filter).init();
 
     let args: Vec<String> = env::args().collect();
 
@@ -114,7 +120,11 @@ async fn main() {
     }
 
     // Start web server
-    let secure = env::var("SECURE_COOKIES").unwrap_or_else(|_| "true".to_string()) == "true";
+    let secure =
+        parse_secure_cookies(env::var("SECURE_COOKIES").ok().as_deref()).unwrap_or_else(|error| {
+            eprintln!("Server configuration error: {error}");
+            std::process::exit(1);
+        });
 
     let server_auth = ServerAuthConfig::from_env().unwrap_or_else(|error| {
         eprintln!("Authentication configuration error: {error}");
@@ -148,4 +158,49 @@ fn connection_base_url_or_exit() -> url::Url {
             std::process::exit(1);
         },
     )
+}
+
+fn parse_secure_cookies(value: Option<&str>) -> Result<bool, String> {
+    match value {
+        None | Some("true") => Ok(true),
+        Some("false") => Ok(false),
+        Some(_) => Err("SECURE_COOKIES must be exactly true or false".to_string()),
+    }
+}
+
+fn parse_log_filter(value: Option<&str>) -> Result<EnvFilter, String> {
+    EnvFilter::try_new(value.unwrap_or("info"))
+        .map_err(|_| "RUST_LOG must be a valid tracing filter directive".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_log_filter, parse_secure_cookies};
+
+    #[test]
+    fn secure_cookies_default_true_and_accept_only_exact_booleans() {
+        assert_eq!(parse_secure_cookies(None), Ok(true));
+        assert_eq!(parse_secure_cookies(Some("true")), Ok(true));
+        assert_eq!(parse_secure_cookies(Some("false")), Ok(false));
+
+        for invalid in ["TRUE", "False", " true", "false ", "yes", ""] {
+            let error = parse_secure_cookies(Some(invalid)).unwrap_err();
+            assert!(error.contains("SECURE_COOKIES"));
+            assert!(error.contains("true or false"));
+        }
+    }
+
+    #[test]
+    fn rust_log_defaults_to_info_and_rejects_invalid_filters() {
+        assert_eq!(parse_log_filter(None).unwrap().to_string(), "info");
+        let configured = parse_log_filter(Some("interne=debug,tower_http=warn"))
+            .unwrap()
+            .to_string();
+        assert!(configured.contains("interne=debug"));
+        assert!(configured.contains("tower_http=warn"));
+
+        let error = parse_log_filter(Some("interne=[debug")).unwrap_err();
+        assert!(error.contains("RUST_LOG"));
+        assert!(!error.contains("client-secret"));
+    }
 }

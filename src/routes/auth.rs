@@ -280,15 +280,11 @@ async fn github_callback(
     let Some(query) = parse_github_callback_query(raw_query.as_deref()) else {
         return render_auth_error(callback_error);
     };
-    if query.provider_error {
-        return render_auth_error(callback_error);
-    }
-    let (Some(code), Some(callback_state)) = (query.code.as_deref(), query.state.as_deref()) else {
+    let Some(callback_state) = query.state.as_deref() else {
         return render_auth_error(callback_error);
     };
-    let is_valid_attempt = !code.is_empty()
-        && attempt.state == callback_state
-        && attempt.expires_at > chrono::Utc::now().timestamp();
+    let is_valid_attempt =
+        attempt.state == callback_state && attempt.expires_at > chrono::Utc::now().timestamp();
     if !is_valid_attempt {
         return render_auth_error(callback_error);
     }
@@ -319,6 +315,12 @@ async fn github_callback(
             }
         }
     }
+    if query.provider_error {
+        return render_auth_error(callback_error);
+    }
+    let Some(code) = query.code.as_deref().filter(|code| !code.is_empty()) else {
+        return render_auth_error(callback_error);
+    };
 
     let profile = match state
         .auth

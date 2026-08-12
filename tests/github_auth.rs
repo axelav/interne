@@ -628,6 +628,41 @@ async fn denied_oauth_callback_consumes_attempt() {
 }
 
 #[tokio::test]
+async fn denied_callback_validates_state_and_expiry_then_consumes_the_attempt() {
+    for case in ["missing", "mismatched", "expired"] {
+        let app = TestApp::with_signup_mode(SignupMode::Public).await;
+        let (cookie, authorization_url) = app.begin_github_login().await;
+        let state = query_parameters(&authorization_url)["state"].clone();
+        if case == "expired" {
+            app.expire_oauth_attempt(&cookie).await;
+        }
+        let denied_uri = match case {
+            "missing" => "/auth/github/callback?error=access_denied".to_string(),
+            "mismatched" => {
+                "/auth/github/callback?error=access_denied&state=attacker-state".to_string()
+            }
+            "expired" => format!(
+                "/auth/github/callback?error=access_denied&error_description=private&state={state}"
+            ),
+            _ => unreachable!(),
+        };
+
+        let denied = app.get(&denied_uri, Some(&cookie)).await;
+        let body = callback_body(denied).await;
+        assert!(body.contains("couldn’t complete GitHub sign-in"));
+        assert!(!body.contains("access_denied"));
+        assert!(!body.contains("private"));
+
+        register_profile(&app, "denial-replay-code", "511", "replay", None);
+        let replay = app
+            .get(&callback_uri("denial-replay-code", &state), Some(&cookie))
+            .await;
+        let body = callback_body(replay).await;
+        assert!(body.contains("couldn’t complete GitHub sign-in"));
+    }
+}
+
+#[tokio::test]
 async fn oauth_callback_with_missing_fields_consumes_attempt() {
     for missing_state in [true, false] {
         let app = TestApp::with_signup_mode(SignupMode::Public).await;

@@ -118,7 +118,7 @@ the reverse proxy for port 3000. Never set `SECURE_COOKIES=false` in production.
 | `PUBLIC_BASE_URL` | required | Public origin used to build callbacks and connection URLs |
 | `GITHUB_SIGNUP_MODE` | `closed` | `closed` rejects unknown identities; `public` creates users |
 | `SECURE_COOKIES` | `true` | Set to `false` only for local HTTP development |
-| `RUST_LOG` | — | Log level filter, such as `info` or `debug` |
+| `RUST_LOG` | `info` | Tracing filter, such as `info` or `interne=debug`; invalid filters stop startup |
 
 In closed mode, an unknown GitHub user sees exactly: “Access isn’t open yet. Email
 webmaster@honkytonk.in for an invite.” Create their account and URL with
