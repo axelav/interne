@@ -1,12 +1,12 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{assert_redirect, body_string, TestApp};
+use common::{TestApp, assert_redirect, body_string};
 
 #[tokio::test]
 async fn login_with_valid_invite_code() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
+    let (_user_id, invite_code) = app.create_legacy_user("Test User").await;
 
     let resp = app
         .post_form("/login", &format!("invite_code={}", invite_code), None)
@@ -20,9 +20,7 @@ async fn login_with_valid_invite_code() {
 async fn login_with_invalid_invite_code() {
     let app = TestApp::new().await;
 
-    let resp = app
-        .post_form("/login", "invite_code=bad-code", None)
-        .await;
+    let resp = app.post_form("/login", "invite_code=bad-code", None).await;
 
     assert_eq!(resp.status(), StatusCode::OK);
     let body = body_string(resp).await;
@@ -32,8 +30,8 @@ async fn login_with_invalid_invite_code() {
 #[tokio::test]
 async fn logout_clears_session() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (_user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let resp = app.post_form("/logout", "", Some(&cookie)).await;
     assert_redirect(&resp, "/login");
@@ -46,8 +44,8 @@ async fn logout_clears_session() {
 #[tokio::test]
 async fn changing_auth_version_revokes_an_existing_session() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     sqlx::query("UPDATE users SET auth_version = auth_version + 1 WHERE id = ?")
         .bind(&user_id)

@@ -380,6 +380,35 @@ button.link-button:hover {
     margin: 3rem auto;
 }
 
+.primary-action {
+    display: inline-block;
+    padding: 0.5rem 1.25rem;
+    background: var(--black);
+    color: var(--white);
+    border-radius: var(--radius);
+    font-size: 0.875rem;
+    text-decoration: none;
+    transition: background 0.15s ease;
+}
+
+.primary-action:hover {
+    background: var(--gray-900);
+}
+
+.login-divider {
+    margin: 1.5rem 0;
+    color: var(--gray-400);
+    font-size: 0.75rem;
+}
+
+.login-error {
+    margin-top: 1rem;
+}
+
+.auth-error p {
+    margin-bottom: 1rem;
+}
+
 /* Empty state */
 .empty {
     text-align: center;

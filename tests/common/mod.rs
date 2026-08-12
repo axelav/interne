@@ -2,7 +2,7 @@
 
 use axum::Router;
 use axum::body::Body;
-use axum::http::{Request, StatusCode};
+use axum::http::Request;
 use axum::response::Response;
 use http_body_util::BodyExt;
 use interne::AuthServices;
@@ -12,8 +12,13 @@ use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use tower_sessions::{SessionStore, session::Id};
+use tower_sessions_sqlx_store::SqliteStore;
 use url::Url;
+
+static NEXT_GITHUB_USER_ID: AtomicU64 = AtomicU64::new(1_000_000);
 
 #[derive(Clone, Default)]
 pub struct FakeGitHubProvider {
@@ -117,8 +122,46 @@ impl TestApp {
             .unwrap()
     }
 
-    /// Create a user in the database and return (user_id, invite_code).
+    /// Create a GitHub-linked user and return (user_id, github_user_id).
     pub async fn create_user(&self, name: &str) -> (String, String) {
+        let github_user_id = NEXT_GITHUB_USER_ID
+            .fetch_add(1, Ordering::Relaxed)
+            .to_string();
+        let github_login = format!("test-{github_user_id}");
+        let user_id = self
+            .create_github_user(name, &github_user_id, &github_login)
+            .await;
+
+        (user_id, github_user_id)
+    }
+
+    pub async fn create_github_user(
+        &self,
+        name: &str,
+        github_user_id: &str,
+        github_login: &str,
+    ) -> String {
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now().to_rfc3339();
+
+        sqlx::query(
+            "INSERT INTO users (id, name, github_user_id, github_login, created_at, updated_at) \
+             VALUES (?, ?, ?, ?, ?, ?)",
+        )
+        .bind(&id)
+        .bind(name)
+        .bind(github_user_id)
+        .bind(github_login)
+        .bind(&now)
+        .bind(&now)
+        .execute(&self.db)
+        .await
+        .expect("Failed to create test user");
+
+        id
+    }
+
+    pub async fn create_legacy_user(&self, name: &str) -> (String, String) {
         let id = uuid::Uuid::new_v4().to_string();
         let invite_code = uuid::Uuid::new_v4().to_string();
         let now = chrono::Utc::now().to_rfc3339();
@@ -133,32 +176,119 @@ impl TestApp {
         .bind(&now)
         .execute(&self.db)
         .await
-        .expect("Failed to create test user");
+        .expect("Failed to create legacy test user");
 
         (id, invite_code)
     }
 
-    /// Log in as the given user and return the session cookie string.
-    pub async fn login(&self, invite_code: &str) -> String {
-        let req = Request::builder()
-            .uri("/login")
-            .method("POST")
-            .header("content-type", "application/x-www-form-urlencoded")
-            .body(Body::from(format!("invite_code={}", invite_code)))
-            .unwrap();
+    pub async fn begin_github_login(&self) -> (String, Url) {
+        self.begin_github_login_with_cookie(None).await
+    }
 
-        let resp = self.request(req).await;
-        assert_eq!(resp.status(), StatusCode::SEE_OTHER);
-
-        resp.headers()
+    pub async fn begin_github_login_with_cookie(&self, cookie: Option<&str>) -> (String, Url) {
+        let response = self.get("/auth/github", cookie).await;
+        assert!(
+            response.status().is_redirection(),
+            "GitHub login start should redirect, got {}",
+            response.status()
+        );
+        let authorization_url = Url::parse(
+            response
+                .headers()
+                .get("location")
+                .expect("GitHub login start should have a Location header")
+                .to_str()
+                .unwrap(),
+        )
+        .expect("GitHub authorization redirect should be a valid URL");
+        let session_cookie = response
+            .headers()
             .get("set-cookie")
-            .expect("Login should set a session cookie")
-            .to_str()
-            .unwrap()
-            .split(';')
-            .next()
-            .unwrap()
-            .to_string()
+            .map(cookie_from_response)
+            .or_else(|| cookie.map(str::to_owned))
+            .expect("GitHub login start should establish or preserve a session cookie");
+
+        (session_cookie, authorization_url)
+    }
+
+    pub async fn github_callback_response(
+        &self,
+        github_user_id: &str,
+        github_login: &str,
+        name: Option<&str>,
+    ) -> Response {
+        let (cookie, authorization_url) = self.begin_github_login().await;
+        let state = authorization_url
+            .query_pairs()
+            .find_map(|(key, value)| (key == "state").then(|| value.into_owned()))
+            .expect("GitHub authorization URL should contain state");
+        let code = format!("code-{github_user_id}");
+        self.github.profile_for_code(
+            &code,
+            GitHubProfile {
+                user_id: github_user_id.to_owned(),
+                login: github_login.to_owned(),
+                name: name.map(str::to_owned),
+            },
+        );
+
+        self.get(
+            &format!("/auth/github/callback?code={code}&state={state}"),
+            Some(&cookie),
+        )
+        .await
+    }
+
+    pub async fn github_login(
+        &self,
+        github_user_id: &str,
+        github_login: &str,
+        name: Option<&str>,
+    ) -> String {
+        let response = self
+            .github_callback_response(github_user_id, github_login, name)
+            .await;
+        assert_redirect(&response, "/");
+        cookie_from_response(
+            response
+                .headers()
+                .get("set-cookie")
+                .expect("GitHub callback should set a post-cycle session cookie"),
+        )
+    }
+
+    /// Log in as the given GitHub identity and return the session cookie string.
+    pub async fn login(&self, github_user_id: &str) -> String {
+        let (github_login, name): (String, String) =
+            sqlx::query_as("SELECT github_login, name FROM users WHERE github_user_id = ?")
+                .bind(github_user_id)
+                .fetch_one(&self.db)
+                .await
+                .expect("GitHub-linked test user should exist");
+
+        self.github_login(github_user_id, &github_login, Some(&name))
+            .await
+    }
+
+    pub async fn expire_oauth_attempt(&self, cookie: &str) {
+        let (_, encoded_id) = cookie
+            .split_once('=')
+            .expect("Session cookie should contain an ID");
+        let session_id =
+            Id::from_str(encoded_id).expect("Session cookie should contain a valid ID");
+        let store = SqliteStore::new(self.db.clone());
+        let mut record = store
+            .load(&session_id)
+            .await
+            .expect("Session should load")
+            .expect("OAuth session should exist");
+        record
+            .data
+            .get_mut("oauth_attempt")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("OAuth attempt should be stored in the session")
+            .insert("expires_at".into(), serde_json::json!(0));
+        store.save(&record).await.expect("Session should save");
     }
 
     /// Send a GET request with an optional session cookie.
@@ -193,6 +323,16 @@ impl TestApp {
         let req = builder.body(Body::empty()).unwrap();
         self.request(req).await
     }
+}
+
+fn cookie_from_response(value: &axum::http::HeaderValue) -> String {
+    value
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_string()
 }
 
 /// Read the full response body as a String.
