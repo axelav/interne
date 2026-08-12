@@ -349,7 +349,7 @@ async fn github_confirm_submit(
         ConnectionProof::LegacyInvite => {}
     }
 
-    let now = chrono::Utc::now().to_rfc3339();
+    let now = crate::connection_tokens::database_timestamp(chrono::Utc::now());
     let mut transaction = state.db.begin().await?;
     let update_result = sqlx::query(
         "UPDATE users \

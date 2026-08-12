@@ -1,6 +1,6 @@
 mod common;
 
-use chrono::{Duration, Utc};
+use chrono::{Duration, SecondsFormat, TimeZone, Utc};
 use interne::connection_tokens::{
     ConnectionPurpose, ConnectionTokenError, connection_url, issue_invitation, reset_auth,
     validate_token,
@@ -54,7 +54,11 @@ async fn new_invitation_supersedes_an_older_token() {
     .unwrap();
     assert_eq!(
         consumed_at.as_deref(),
-        Some(replacement_now.to_rfc3339().as_str())
+        Some(
+            replacement_now
+                .to_rfc3339_opts(SecondsFormat::Nanos, true)
+                .as_str()
+        )
     );
     assert!(
         validate_token(&app.db, &invitation.plaintext_token, replacement_now)
@@ -81,6 +85,81 @@ async fn expired_token_is_rejected() {
         .unwrap_err();
 
     assert!(matches!(error, ConnectionTokenError::InvalidToken));
+}
+
+#[tokio::test]
+async fn exact_second_expiry_is_active_before_and_expired_at_the_boundary() {
+    let app = TestApp::new().await;
+    let now = Utc.with_ymd_and_hms(2026, 8, 12, 12, 0, 0).unwrap();
+    let issued = issue_invitation(&app.db, "Exact", now).await.unwrap();
+    let (created_at, expires_at): (String, String) = sqlx::query_as(
+        "SELECT created_at, expires_at FROM auth_connection_tokens WHERE user_id = ?",
+    )
+    .bind(&issued.user_id)
+    .fetch_one(&app.db)
+    .await
+    .unwrap();
+
+    assert_eq!(created_at, now.to_rfc3339_opts(SecondsFormat::Nanos, true));
+    assert_eq!(
+        expires_at,
+        issued
+            .expires_at
+            .to_rfc3339_opts(SecondsFormat::Nanos, true)
+    );
+    assert!(
+        validate_token(
+            &app.db,
+            &issued.plaintext_token,
+            issued.expires_at - Duration::nanoseconds(1),
+        )
+        .await
+        .is_ok()
+    );
+    assert!(
+        validate_token(&app.db, &issued.plaintext_token, issued.expires_at)
+            .await
+            .is_err()
+    );
+}
+
+#[tokio::test]
+async fn fractional_expiry_is_active_before_and_expired_after_the_boundary() {
+    let app = TestApp::new().await;
+    let now =
+        Utc.with_ymd_and_hms(2026, 8, 12, 12, 0, 0).unwrap() + Duration::nanoseconds(1_234_000);
+    let issued = issue_invitation(&app.db, "Fractional", now).await.unwrap();
+    let expires_at: String =
+        sqlx::query_scalar("SELECT expires_at FROM auth_connection_tokens WHERE user_id = ?")
+            .bind(&issued.user_id)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+
+    assert_eq!(
+        expires_at,
+        issued
+            .expires_at
+            .to_rfc3339_opts(SecondsFormat::Nanos, true)
+    );
+    assert!(
+        validate_token(
+            &app.db,
+            &issued.plaintext_token,
+            issued.expires_at - Duration::nanoseconds(1),
+        )
+        .await
+        .is_ok()
+    );
+    assert!(
+        validate_token(
+            &app.db,
+            &issued.plaintext_token,
+            issued.expires_at + Duration::nanoseconds(1),
+        )
+        .await
+        .is_err()
+    );
 }
 
 #[tokio::test]
@@ -119,7 +198,16 @@ async fn reset_auth_disconnects_github_and_increments_auth_version() {
     .fetch_one(&app.db)
     .await
     .unwrap();
-    assert_eq!(user, (None, None, None, 2, now.to_rfc3339()));
+    assert_eq!(
+        user,
+        (
+            None,
+            None,
+            None,
+            2,
+            now.to_rfc3339_opts(SecondsFormat::Nanos, true)
+        )
+    );
     assert_eq!(issued.user_id, user_id);
     assert_eq!(issued.expires_at, now + Duration::hours(4));
     assert_eq!(
@@ -162,28 +250,53 @@ fn connection_url_uses_public_base_and_percent_encoding() {
 
 #[tokio::test]
 async fn plaintext_token_is_never_written_to_sqlite() {
-    let app = TestApp::new().await;
-    let issued = issue_invitation(&app.db, "Guest", Utc::now())
+    let database = FileDatabase::new("token-storage");
+    let options = sqlx::sqlite::SqliteConnectOptions::from_str(&database.url())
+        .unwrap()
+        .create_if_missing(true)
+        .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal);
+    let pool = sqlx::sqlite::SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
         .await
         .unwrap();
+    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    let now = Utc::now();
+    let issued = issue_invitation(&pool, "Guest", now).await.unwrap();
 
-    let persisted_text: (String, String, String, String, String, Option<String>) =
-        sqlx::query_as(
-            "SELECT id, user_id, token_hash, purpose, expires_at, consumed_at FROM auth_connection_tokens WHERE user_id = ?",
-        )
-        .bind(&issued.user_id)
-        .fetch_one(&app.db)
+    let stored_hash: String =
+        sqlx::query_scalar("SELECT token_hash FROM auth_connection_tokens WHERE user_id = ?")
+            .bind(&issued.user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_ne!(stored_hash, issued.plaintext_token);
+    assert!(
+        validate_token(&pool, &issued.plaintext_token, now)
+            .await
+            .is_ok()
+    );
+
+    sqlx::query("PRAGMA wal_checkpoint(TRUNCATE)")
+        .fetch_all(&pool)
         .await
         .unwrap();
-    for value in [
-        persisted_text.0.as_str(),
-        persisted_text.1.as_str(),
-        persisted_text.2.as_str(),
-        persisted_text.3.as_str(),
-        persisted_text.4.as_str(),
-        persisted_text.5.as_deref().unwrap_or_default(),
-    ] {
-        assert!(!value.contains(&issued.plaintext_token));
+    pool.close().await;
+
+    let plaintext = issued.plaintext_token.as_bytes();
+    for artifact in database
+        .artifacts()
+        .into_iter()
+        .filter(|path| path.exists())
+    {
+        let bytes = std::fs::read(&artifact).unwrap();
+        assert!(
+            !bytes
+                .windows(plaintext.len())
+                .any(|window| window == plaintext),
+            "plaintext token found in {}",
+            artifact.display()
+        );
     }
 }
 
@@ -213,7 +326,20 @@ async fn invitation_rolls_back_user_creation_when_token_insert_fails() {
 #[tokio::test]
 async fn reset_auth_rolls_back_disconnection_when_token_insert_fails() {
     let app = TestApp::new().await;
-    let user_id = app.create_github_user("Guest", "12345", "octoguest").await;
+    let issued = issue_invitation(&app.db, "Guest", Utc::now())
+        .await
+        .unwrap();
+    let user_id = issued.user_id;
+    let original_updated_at = "2025-02-03T04:05:06.000000000Z";
+    sqlx::query(
+        "UPDATE users SET invite_code = 'legacy-code', github_user_id = '12345', \
+         github_login = 'octoguest', auth_version = 7, updated_at = ? WHERE id = ?",
+    )
+    .bind(original_updated_at)
+    .bind(&user_id)
+    .execute(&app.db)
+    .await
+    .unwrap();
     sqlx::query(
         "CREATE TRIGGER reject_connection_tokens BEFORE INSERT ON auth_connection_tokens BEGIN SELECT RAISE(ABORT, 'rejected'); END",
     )
@@ -223,44 +349,66 @@ async fn reset_auth_rolls_back_disconnection_when_token_insert_fails() {
 
     assert!(reset_auth(&app.db, &user_id, Utc::now()).await.is_err());
 
-    let user: (Option<String>, Option<String>, i64) =
-        sqlx::query_as("SELECT github_user_id, github_login, auth_version FROM users WHERE id = ?")
+    let user: (Option<String>, Option<String>, Option<String>, i64, String) = sqlx::query_as(
+        "SELECT invite_code, github_user_id, github_login, auth_version, updated_at FROM users WHERE id = ?",
+    )
+    .bind(&user_id)
+    .fetch_one(&app.db)
+    .await
+    .unwrap();
+    assert_eq!(
+        user,
+        (
+            Some("legacy-code".into()),
+            Some("12345".into()),
+            Some("octoguest".into()),
+            7,
+            original_updated_at.into()
+        )
+    );
+    let predecessor_consumed_at: Option<String> =
+        sqlx::query_scalar("SELECT consumed_at FROM auth_connection_tokens WHERE user_id = ?")
             .bind(&user_id)
             .fetch_one(&app.db)
             .await
             .unwrap();
-    assert_eq!(user, (Some("12345".into()), Some("octoguest".into()), 1));
+    assert_eq!(predecessor_consumed_at, None);
 }
 
-struct CliDatabase {
+struct FileDatabase {
     path: std::path::PathBuf,
 }
 
-impl CliDatabase {
-    fn new() -> Self {
+impl FileDatabase {
+    fn new(label: &str) -> Self {
         Self {
-            path: std::env::temp_dir().join(format!("interne-cli-{}.db", uuid::Uuid::new_v4())),
+            path: std::env::temp_dir().join(format!("interne-{label}-{}.db", uuid::Uuid::new_v4())),
         }
     }
 
     fn url(&self) -> String {
         format!("sqlite:{}", self.path.display())
     }
+
+    fn artifacts(&self) -> [std::path::PathBuf; 3] {
+        let with_suffix = |suffix: &str| {
+            let mut path = self.path.as_os_str().to_os_string();
+            path.push(suffix);
+            std::path::PathBuf::from(path)
+        };
+        [self.path.clone(), with_suffix("-wal"), with_suffix("-shm")]
+    }
 }
 
-impl Drop for CliDatabase {
+impl Drop for FileDatabase {
     fn drop(&mut self) {
-        for path in [
-            self.path.clone(),
-            self.path.with_extension("db-shm"),
-            self.path.with_extension("db-wal"),
-        ] {
+        for path in self.artifacts() {
             let _ = std::fs::remove_file(path);
         }
     }
 }
 
-fn run_cli(database: &CliDatabase, arguments: &[&str]) -> std::process::Output {
+fn run_cli(database: &FileDatabase, arguments: &[&str]) -> std::process::Output {
     Command::new(env!("CARGO_BIN_EXE_interne"))
         .args(arguments)
         .env_clear()
@@ -273,7 +421,7 @@ fn run_cli(database: &CliDatabase, arguments: &[&str]) -> std::process::Output {
 
 #[tokio::test]
 async fn invitation_and_reset_commands_do_not_require_github_credentials() {
-    let database = CliDatabase::new();
+    let database = FileDatabase::new("cli");
     let invite = run_cli(&database, &["invite-user", "CLI Guest"]);
     assert!(
         invite.status.success(),
@@ -299,7 +447,7 @@ async fn invitation_and_reset_commands_do_not_require_github_credentials() {
 
 #[tokio::test]
 async fn deprecated_create_user_alias_ignores_email_and_issues_an_invitation() {
-    let database = CliDatabase::new();
+    let database = FileDatabase::new("cli");
 
     let output = run_cli(
         &database,
@@ -333,7 +481,7 @@ async fn deprecated_create_user_alias_ignores_email_and_issues_an_invitation() {
 
 #[test]
 fn cli_help_names_connection_arguments_and_four_hour_expiry() {
-    let database = CliDatabase::new();
+    let database = FileDatabase::new("cli");
 
     let output = run_cli(&database, &["help"]);
 

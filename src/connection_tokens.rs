@@ -1,7 +1,7 @@
 use std::fmt;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 use sqlx::{Sqlite, SqlitePool, Transaction};
@@ -95,7 +95,7 @@ pub async fn issue_invitation(
     now: DateTime<Utc>,
 ) -> Result<IssuedConnection, ConnectionTokenError> {
     let user_id = Uuid::new_v4().to_string();
-    let now_text = now.to_rfc3339();
+    let now_text = database_timestamp(now);
     let mut transaction = pool.begin().await?;
 
     sqlx::query(
@@ -119,7 +119,7 @@ pub async fn reset_auth(
     user_id: &str,
     now: DateTime<Utc>,
 ) -> Result<IssuedConnection, ConnectionTokenError> {
-    let now_text = now.to_rfc3339();
+    let now_text = database_timestamp(now);
     let mut transaction = pool.begin().await?;
     let result = sqlx::query(
         "UPDATE users SET github_user_id = NULL, github_login = NULL, invite_code = NULL, \
@@ -159,7 +159,7 @@ pub async fn validate_token(
          WHERE token_hash = ? AND consumed_at IS NULL AND expires_at > ?",
     )
     .bind(token_hash)
-    .bind(now.to_rfc3339())
+    .bind(database_timestamp(now))
     .fetch_optional(pool)
     .await?;
 
@@ -193,7 +193,7 @@ async fn issue_token(
     let plaintext_token = URL_SAFE_NO_PAD.encode(random);
     let token_hash = hash_token(&plaintext_token);
     let expires_at = now + Duration::hours(TOKEN_LIFETIME_HOURS);
-    let now_text = now.to_rfc3339();
+    let now_text = database_timestamp(now);
 
     sqlx::query(
         "UPDATE auth_connection_tokens SET consumed_at = ? \
@@ -215,7 +215,7 @@ async fn issue_token(
     .bind(token_hash)
     .bind(purpose.as_str())
     .bind(&now_text)
-    .bind(expires_at.to_rfc3339())
+    .bind(database_timestamp(expires_at))
     .execute(&mut **transaction)
     .await?;
 
@@ -228,4 +228,8 @@ async fn issue_token(
 
 fn hash_token(plaintext: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(plaintext.as_bytes()))
+}
+
+pub(crate) fn database_timestamp(timestamp: DateTime<Utc>) -> String {
+    timestamp.to_rfc3339_opts(SecondsFormat::Nanos, true)
 }

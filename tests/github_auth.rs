@@ -361,7 +361,9 @@ async fn link_confirmation_consumes_active_connection_tokens() {
     .fetch_one(&app.db)
     .await
     .unwrap();
-    assert!(consumed_at.is_some());
+    let consumed_at = consumed_at.expect("active token is consumed");
+    assert_eq!(consumed_at.len(), 30);
+    assert!(consumed_at.ends_with('Z'));
 }
 
 #[tokio::test]
