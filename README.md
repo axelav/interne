@@ -48,7 +48,8 @@ one configured callback URL, so create a separate app for local development with
 - Authorization callback URL: `http://127.0.0.1:3000/auth/github/callback`
 - Scopes: leave blank
 
-Copy `.env.example` to `.env`, replace both GitHub credential placeholders, and set:
+Copy `.env.example` to `.env`, replace both GitHub credential placeholders, and
+make these explicit local-only overrides:
 
 ```dotenv
 PUBLIC_BASE_URL=http://127.0.0.1:3000
@@ -57,7 +58,8 @@ SECURE_COOKIES=false
 ```
 
 `SECURE_COOKIES=false` is a local-only override for HTTP. Do not use it when the
-site is served over HTTPS. Start the server with `cargo run`, then open
+site is served over HTTPS; `.env.example` and Compose default it to `true`. Start
+the server with `cargo run`, then open
 [http://127.0.0.1:3000](http://127.0.0.1:3000). A bare `cargo run` without
 `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, and `PUBLIC_BASE_URL` exits with a
 configuration error.
@@ -101,9 +103,10 @@ Register the production GitHub OAuth app with exactly these values:
 Set the OAuth variables below in the deployment environment, store
 `GITHUB_CLIENT_SECRET` in the deployment's existing secret mechanism, and then run
 `docker compose up -d`. Compose passes the variables through substitution; no real
-credential belongs in this repository. The multi-stage image stores SQLite in the
-mounted `./data/` directory. Configure the reverse proxy for port 3000 and use
-secure cookies in production.
+credential belongs in this repository. Compose refuses to render without the
+client ID, client secret, and public base URL; secure cookies default to `true`.
+The multi-stage image stores SQLite in the mounted `./data/` directory. Configure
+the reverse proxy for port 3000. Never set `SECURE_COOKIES=false` in production.
 
 ## Environment
 

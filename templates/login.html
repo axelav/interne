@@ -6,14 +6,14 @@
 <div class="login-page">
     <h1 class="form-heading">Login</h1>
 
-    <a class="primary-action" href="/auth/github">Continue with GitHub</a>
+    <a class="oauth-button primary-action" href="/auth/github">Continue with GitHub</a>
 
     {% if let Some(err) = error %}
-    <div class="error-message login-error">{{ err }}</div>
+    <div class="auth-status error-message login-error">{{ err }}</div>
     {% endif %}
 
     {% if legacy_login_available %}
-    <div class="login-divider"><span>or use an invite code</span></div>
+    <div class="auth-divider login-divider"><span>or use an invite code</span></div>
 
     <form method="post" action="/login" autocomplete="off">
         <div class="form-group">
