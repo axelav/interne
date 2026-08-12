@@ -27,6 +27,13 @@ impl FakeGitHubProvider {
             .expect("Fake GitHub profile store should not be poisoned")
             .insert(code.to_string(), Ok(profile));
     }
+
+    pub fn error_for_code(&self, code: &str, error: GitHubError) {
+        self.profiles
+            .lock()
+            .expect("Fake GitHub profile store should not be poisoned")
+            .insert(code.to_string(), Err(error));
+    }
 }
 
 #[async_trait::async_trait]
@@ -223,7 +230,7 @@ pub fn assert_hx_redirect(resp: &Response, expected_location: &str) {
 
 #[cfg(test)]
 mod tests {
-    use interne::github::{GitHubProfile, GitHubProvider};
+    use interne::github::{GitHubError, GitHubProfile, GitHubProvider};
     use url::Url;
 
     use super::FakeGitHubProvider;
@@ -247,5 +254,21 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn fake_github_returns_the_error_registered_for_a_code() {
+        let fake = FakeGitHubProvider::default();
+        fake.error_for_code("failed-code", GitHubError::ProfileFetch);
+
+        let error = fake
+            .exchange_code(
+                &Url::parse("https://interne.test/auth/github/callback").unwrap(),
+                "failed-code",
+                "verifier",
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error, GitHubError::ProfileFetch);
     }
 }
