@@ -44,6 +44,22 @@ async fn logout_clears_session() {
 }
 
 #[tokio::test]
+async fn changing_auth_version_revokes_an_existing_session() {
+    let app = TestApp::new().await;
+    let (user_id, invite_code) = app.create_user("Test User").await;
+    let cookie = app.login(&invite_code).await;
+
+    sqlx::query("UPDATE users SET auth_version = auth_version + 1 WHERE id = ?")
+        .bind(&user_id)
+        .execute(&app.db)
+        .await
+        .unwrap();
+
+    let response = app.get("/", Some(&cookie)).await;
+    assert_redirect(&response, "/login");
+}
+
+#[tokio::test]
 async fn unauthenticated_index_redirects_to_login() {
     let app = TestApp::new().await;
     let resp = app.get("/", None).await;
