@@ -144,6 +144,111 @@ async fn oauth_callback_rejects_expired_attempt() {
 }
 
 #[tokio::test]
+async fn denied_oauth_callback_consumes_attempt() {
+    let app = TestApp::with_signup_mode(SignupMode::Public).await;
+    let (cookie, authorization_url) = app.begin_github_login().await;
+    let state = query_parameters(&authorization_url)["state"].clone();
+
+    let denied = app
+        .get(
+            &format!(
+                "/auth/github/callback?error=access_denied&error_description=private-details&state={state}"
+            ),
+            Some(&cookie),
+        )
+        .await;
+    let body = callback_body(denied).await;
+    assert!(body.contains("couldn’t complete GitHub sign-in"));
+    assert!(!body.contains("access_denied"));
+    assert!(!body.contains("private-details"));
+
+    register_profile(&app, "valid-code", "510", "denied-replay", None);
+    let replay = app
+        .get(&callback_uri("valid-code", &state), Some(&cookie))
+        .await;
+    let body = callback_body(replay).await;
+    assert!(body.contains("couldn’t complete GitHub sign-in"));
+    let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM users")
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn oauth_callback_with_missing_fields_consumes_attempt() {
+    for missing_state in [true, false] {
+        let app = TestApp::with_signup_mode(SignupMode::Public).await;
+        let (cookie, authorization_url) = app.begin_github_login().await;
+        let state = query_parameters(&authorization_url)["state"].clone();
+        let invalid_uri = if missing_state {
+            "/auth/github/callback?code=valid-code".to_string()
+        } else {
+            format!("/auth/github/callback?state={state}")
+        };
+
+        let response = app.get(&invalid_uri, Some(&cookie)).await;
+        let body = callback_body(response).await;
+        assert!(body.contains("couldn’t complete GitHub sign-in"));
+
+        register_profile(&app, "valid-code", "520", "missing-replay", None);
+        let replay = app
+            .get(&callback_uri("valid-code", &state), Some(&cookie))
+            .await;
+        let body = callback_body(replay).await;
+        assert!(body.contains("couldn’t complete GitHub sign-in"));
+    }
+}
+
+#[tokio::test]
+async fn oauth_callback_with_malformed_encoding_consumes_attempt() {
+    let app = TestApp::with_signup_mode(SignupMode::Public).await;
+    let (cookie, authorization_url) = app.begin_github_login().await;
+    let state = query_parameters(&authorization_url)["state"].clone();
+
+    let response = app
+        .get(
+            &format!("/auth/github/callback?code=%FF&state={state}"),
+            Some(&cookie),
+        )
+        .await;
+    let body = callback_body(response).await;
+    assert!(body.contains("couldn’t complete GitHub sign-in"));
+
+    register_profile(&app, "valid-code", "530", "malformed-replay", None);
+    let replay = app
+        .get(&callback_uri("valid-code", &state), Some(&cookie))
+        .await;
+    let body = callback_body(replay).await;
+    assert!(body.contains("couldn’t complete GitHub sign-in"));
+}
+
+#[tokio::test]
+async fn oauth_callback_rejects_duplicate_state_or_code() {
+    for duplicate_state in [true, false] {
+        let app = TestApp::with_signup_mode(SignupMode::Public).await;
+        let (cookie, authorization_url) = app.begin_github_login().await;
+        let state = query_parameters(&authorization_url)["state"].clone();
+        register_profile(&app, "valid-code", "540", "duplicate", None);
+        let invalid_uri = if duplicate_state {
+            format!("/auth/github/callback?code=valid-code&state={state}&state={state}")
+        } else {
+            format!("/auth/github/callback?code=valid-code&code=valid-code&state={state}")
+        };
+
+        let response = app.get(&invalid_uri, Some(&cookie)).await;
+        let body = callback_body(response).await;
+        assert!(body.contains("couldn’t complete GitHub sign-in"));
+
+        let replay = app
+            .get(&callback_uri("valid-code", &state), Some(&cookie))
+            .await;
+        let body = callback_body(replay).await;
+        assert!(body.contains("couldn’t complete GitHub sign-in"));
+    }
+}
+
+#[tokio::test]
 async fn github_login_refreshes_display_username() {
     let app = TestApp::new().await;
     app.create_github_user("Axel", "600", "old-login").await;

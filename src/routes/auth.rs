@@ -1,7 +1,9 @@
+use std::collections::HashSet;
+
 use askama::Template;
 use axum::{
     Form, Router,
-    extract::{Query, State},
+    extract::{RawQuery, State},
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
 };
@@ -43,10 +45,10 @@ pub struct LoginForm {
     invite_code: String,
 }
 
-#[derive(Deserialize)]
 struct GitHubCallbackQuery {
-    code: String,
-    state: String,
+    code: Option<String>,
+    state: Option<String>,
+    provider_error: bool,
 }
 
 pub fn router() -> Router<AppState> {
@@ -118,13 +120,23 @@ async fn github_login_start(
 async fn github_callback(
     State(state): State<AppState>,
     session: Session,
-    Query(query): Query<GitHubCallbackQuery>,
+    RawQuery(raw_query): RawQuery,
 ) -> Result<impl IntoResponse, AppError> {
     let Some(attempt) = take_oauth_attempt(&session).await? else {
         return render_auth_error(GITHUB_SIGN_IN_ERROR);
     };
+    let Some(query) = parse_github_callback_query(raw_query.as_deref()) else {
+        return render_auth_error(GITHUB_SIGN_IN_ERROR);
+    };
+    if query.provider_error {
+        return render_auth_error(GITHUB_SIGN_IN_ERROR);
+    }
+    let (Some(code), Some(callback_state)) = (query.code.as_deref(), query.state.as_deref()) else {
+        return render_auth_error(GITHUB_SIGN_IN_ERROR);
+    };
     let is_valid_attempt = attempt.purpose == OAuthPurpose::Login
-        && attempt.state == query.state
+        && !code.is_empty()
+        && attempt.state == callback_state
         && attempt.expires_at > chrono::Utc::now().timestamp();
     if !is_valid_attempt {
         return render_auth_error(GITHUB_SIGN_IN_ERROR);
@@ -133,11 +145,7 @@ async fn github_callback(
     let profile = match state
         .auth
         .github
-        .exchange_code(
-            &github_callback_url(&state),
-            &query.code,
-            &attempt.pkce_verifier,
-        )
+        .exchange_code(&github_callback_url(&state), code, &attempt.pkce_verifier)
         .await
     {
         Ok(profile) => profile,
@@ -195,6 +203,55 @@ async fn github_callback(
     session.cycle_id().await?;
     login_user(&session, &user).await?;
     Ok(Redirect::to("/").into_response())
+}
+
+fn parse_github_callback_query(raw_query: Option<&str>) -> Option<GitHubCallbackQuery> {
+    let raw_query = raw_query?;
+    if !has_valid_percent_encoding(raw_query) {
+        return None;
+    }
+
+    let mut seen_keys = HashSet::new();
+    let mut query = GitHubCallbackQuery {
+        code: None,
+        state: None,
+        provider_error: false,
+    };
+    for (key, value) in url::form_urlencoded::parse(raw_query.as_bytes()) {
+        if key.contains('\u{fffd}')
+            || value.contains('\u{fffd}')
+            || !seen_keys.insert(key.to_string())
+        {
+            return None;
+        }
+        match key.as_ref() {
+            "code" => query.code = Some(value.into_owned()),
+            "state" => query.state = Some(value.into_owned()),
+            "error" => query.provider_error = true,
+            _ => {}
+        }
+    }
+
+    Some(query)
+}
+
+fn has_valid_percent_encoding(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len()
+                || !bytes[index + 1].is_ascii_hexdigit()
+                || !bytes[index + 2].is_ascii_hexdigit()
+            {
+                return false;
+            }
+            index += 3;
+        } else {
+            index += 1;
+        }
+    }
+    true
 }
 
 async fn legacy_login_available(state: &AppState) -> Result<bool, AppError> {
