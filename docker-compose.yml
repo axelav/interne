@@ -8,4 +8,10 @@ services:
     environment:
       - DATABASE_URL=sqlite:/app/data/interne.db
       - RUST_LOG=info
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-http://127.0.0.1:3000}
+      - GITHUB_SIGNUP_MODE=${GITHUB_SIGNUP_MODE:-closed}
+      # false is only for local HTTP. Set SECURE_COOKIES=true behind HTTPS.
+      - SECURE_COOKIES=${SECURE_COOKIES:-false}
     restart: unless-stopped
