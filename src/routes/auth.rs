@@ -106,7 +106,10 @@ async fn recovery_entry(
     };
     let claim = match validate_token(&state.db, &plaintext_token, chrono::Utc::now()).await {
         Ok(claim) => claim,
-        Err(_) => return render_auth_error(CONNECTION_TOKEN_ERROR),
+        Err(error) => {
+            log_connection_token_failure("connection token validation failed", &error);
+            return render_auth_error(CONNECTION_TOKEN_ERROR);
+        }
     };
     store_connection_claim(&session, &claim).await?;
     Ok(Redirect::to("/auth/github/recover").into_response())
@@ -119,11 +122,12 @@ async fn github_recovery_start(
     let Some(claim) = take_connection_claim(&session).await? else {
         return render_auth_error(CONNECTION_TOKEN_ERROR);
     };
-    if validate_claim(&state.db, &claim, chrono::Utc::now())
-        .await
-        .is_err()
-    {
-        return render_auth_error(CONNECTION_TOKEN_ERROR);
+    match validate_claim(&state.db, &claim, chrono::Utc::now()).await {
+        Ok(()) => {}
+        Err(error) => {
+            log_connection_token_failure("connection claim revalidation failed", &error);
+            return render_auth_error(CONNECTION_TOKEN_ERROR);
+        }
     }
 
     let attempt = OAuthAttempt::new(
@@ -142,7 +146,10 @@ async fn github_recovery_start(
         &attempt.pkce_challenge(),
     ) {
         Ok(url) => url,
-        Err(_) => return render_auth_error(CONNECTION_TOKEN_ERROR),
+        Err(error) => {
+            log_github_failure("recovery authorization URL creation failed", error);
+            return render_auth_error(CONNECTION_TOKEN_ERROR);
+        }
     };
 
     Ok(Redirect::to(authorization_url.as_str()).into_response())
@@ -226,7 +233,10 @@ async fn github_link_start(
         &attempt.pkce_challenge(),
     ) {
         Ok(url) => url,
-        Err(_) => return render_auth_error(GITHUB_LINK_ERROR),
+        Err(error) => {
+            log_github_failure("legacy link authorization URL creation failed", error);
+            return render_auth_error(GITHUB_LINK_ERROR);
+        }
     };
 
     Ok(Redirect::to(authorization_url.as_str()).into_response())
@@ -245,7 +255,10 @@ async fn github_login_start(
         &attempt.pkce_challenge(),
     ) {
         Ok(url) => url,
-        Err(_) => return render_auth_error(GITHUB_SIGN_IN_ERROR),
+        Err(error) => {
+            log_github_failure("login authorization URL creation failed", error);
+            return render_auth_error(GITHUB_SIGN_IN_ERROR);
+        }
     };
 
     Ok(Redirect::to(authorization_url.as_str()).into_response())
@@ -298,11 +311,12 @@ async fn github_callback(
             user_id: user_id.clone(),
             purpose: *purpose,
         };
-        if validate_claim(&state.db, &claim, chrono::Utc::now())
-            .await
-            .is_err()
-        {
-            return render_auth_error(callback_error);
+        match validate_claim(&state.db, &claim, chrono::Utc::now()).await {
+            Ok(()) => {}
+            Err(error) => {
+                log_connection_token_failure("OAuth connection claim revalidation failed", &error);
+                return render_auth_error(callback_error);
+            }
         }
     }
 
@@ -313,7 +327,10 @@ async fn github_callback(
         .await
     {
         Ok(profile) => profile,
-        Err(_) => return render_auth_error(callback_error),
+        Err(error) => {
+            log_github_failure("OAuth callback exchange failed", error);
+            return render_auth_error(callback_error);
+        }
     };
 
     match attempt.purpose {
@@ -475,7 +492,10 @@ async fn github_confirm_submit(
                 Err(ConnectionTokenError::GitHubIdentityInUse) => {
                     return render_auth_error(GITHUB_IDENTITY_IN_USE_ERROR);
                 }
-                Err(_) => return render_auth_error(CONNECTION_TOKEN_ERROR),
+                Err(error) => {
+                    log_connection_token_failure("connection token consumption failed", &error);
+                    return render_auth_error(CONNECTION_TOKEN_ERROR);
+                }
             }
         }
     };
@@ -572,9 +592,16 @@ async fn pending_connection_is_live(
                 user_id: pending.user_id.clone(),
                 purpose: *purpose,
             };
-            Ok(validate_claim(&state.db, &claim, chrono::Utc::now())
-                .await
-                .is_ok())
+            match validate_claim(&state.db, &claim, chrono::Utc::now()).await {
+                Ok(()) => Ok(true),
+                Err(error) => {
+                    log_connection_token_failure(
+                        "pending connection claim revalidation failed",
+                        &error,
+                    );
+                    Ok(false)
+                }
+            }
         }
     }
 }
@@ -598,6 +625,16 @@ fn confirmation_action(proof: &ConnectionProof) -> &'static str {
             ..
         } => "Recover account",
     }
+}
+
+fn log_connection_token_failure(operation: &'static str, error: &ConnectionTokenError) {
+    if matches!(error, ConnectionTokenError::Database(_)) {
+        tracing::error!(operation, "connection token database operation failed");
+    }
+}
+
+fn log_github_failure(operation: &'static str, error: crate::github::GitHubError) {
+    tracing::error!(operation, stage = %error, "GitHub authentication operation failed");
 }
 
 fn is_unique_violation(error: &sqlx::Error) -> bool {

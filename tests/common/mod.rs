@@ -11,14 +11,61 @@ use interne::github::{GitHubError, GitHubProfile, GitHubProvider};
 use sqlx::SqlitePool;
 use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
 use std::collections::HashMap;
+use std::io::Write;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tower_sessions::{SessionStore, session::Id};
 use tower_sessions_sqlx_store::SqliteStore;
+use tracing::instrument::WithSubscriber;
 use url::Url;
 
 static NEXT_GITHUB_USER_ID: AtomicU64 = AtomicU64::new(1_000_000);
+
+#[derive(Clone, Default)]
+struct LogCapture(Arc<Mutex<Vec<u8>>>);
+
+struct LogWriter(Arc<Mutex<Vec<u8>>>);
+
+impl Write for LogWriter {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for LogCapture {
+    type Writer = LogWriter;
+
+    fn make_writer(&'a self) -> Self::Writer {
+        LogWriter(self.0.clone())
+    }
+}
+
+impl LogCapture {
+    fn contents(&self) -> String {
+        String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
+    }
+}
+
+pub async fn capture_error_logs<F, T>(future: F) -> (T, String)
+where
+    F: Future<Output = T>,
+{
+    let capture = LogCapture::default();
+    let subscriber = tracing_subscriber::fmt()
+        .without_time()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::ERROR)
+        .with_writer(capture.clone())
+        .finish();
+    let output = future.with_subscriber(subscriber).await;
+    (output, capture.contents())
+}
 
 #[derive(Clone, Default)]
 pub struct FakeGitHubProvider {

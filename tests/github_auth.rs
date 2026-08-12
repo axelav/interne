@@ -3,7 +3,7 @@ mod common;
 use std::collections::HashMap;
 
 use axum::http::{Response, StatusCode};
-use common::{TestApp, assert_redirect, body_string, cookie_from_response};
+use common::{TestApp, assert_redirect, body_string, capture_error_logs, cookie_from_response};
 use interne::config::SignupMode;
 use interne::github::{GitHubError, GitHubProfile};
 
@@ -669,6 +669,25 @@ async fn provider_failure_shows_safe_error() {
     assert!(!body.contains("sensitive-code"));
     assert!(!body.contains("GitHub profile fetch failed"));
     assert!(!body.contains("ProfileFetch"));
+}
+
+#[tokio::test]
+async fn provider_failure_logs_safe_stage_without_oauth_code() {
+    let app = TestApp::new().await;
+    let (cookie, authorization_url) = app.begin_github_login().await;
+    let state = query_parameters(&authorization_url)["state"].clone();
+    let hostile_code = "hostile-secret-oauth-code";
+    app.github
+        .error_for_code(hostile_code, GitHubError::ProfileFetch);
+
+    let (response, logs) =
+        capture_error_logs(app.get(&callback_uri(hostile_code, &state), Some(&cookie))).await;
+    let body = callback_body(response).await;
+
+    assert!(body.contains("couldn’t complete GitHub sign-in"));
+    assert!(logs.contains("GitHub profile fetch failed"));
+    assert!(logs.contains("OAuth callback exchange failed"));
+    assert!(!logs.contains(hostile_code));
 }
 
 #[tokio::test]

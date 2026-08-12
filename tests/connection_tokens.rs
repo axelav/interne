@@ -3,15 +3,17 @@ mod common;
 use axum::http::{Response, StatusCode};
 use chrono::{Duration, SecondsFormat, TimeZone, Utc};
 use interne::connection_tokens::{
-    ConnectionPurpose, ConnectionTokenError, connection_url, issue_invitation, reset_auth,
-    validate_token,
+    ConnectionPurpose, ConnectionTokenError, connection_url, consume_and_link, issue_invitation,
+    reset_auth, validate_token,
 };
 use interne::github::GitHubProfile;
 use std::process::Command;
 use std::str::FromStr;
+use std::sync::Arc;
+use std::time::Duration as StdDuration;
 use url::Url;
 
-use common::{TestApp, assert_redirect, body_string, cookie_from_response};
+use common::{TestApp, assert_redirect, body_string, capture_error_logs, cookie_from_response};
 
 fn query_parameter(url: &Url, name: &str) -> String {
     url.query_pairs()
@@ -469,6 +471,159 @@ async fn malformed_and_duplicate_recovery_queries_show_the_same_safe_error() {
 }
 
 #[tokio::test]
+async fn recovery_token_database_failure_logs_only_safe_operation_context() {
+    let app = TestApp::new().await;
+    let issued = issue_invitation(&app.db, "Secret", Utc::now())
+        .await
+        .unwrap();
+    let hostile_token = issued.plaintext_token;
+    sqlx::query("DROP TABLE auth_connection_tokens")
+        .execute(&app.db)
+        .await
+        .unwrap();
+
+    let (response, logs) =
+        capture_error_logs(app.get(&format!("/recover?token={hostile_token}"), None)).await;
+    let body = body_string(response).await;
+
+    assert!(body.contains("invalid or expired"));
+    assert!(logs.contains("connection token validation failed"));
+    assert!(!logs.contains(&hostile_token));
+    assert!(!logs.contains("no such table"));
+    assert!(!logs.contains("auth_connection_tokens"));
+}
+
+#[tokio::test]
+async fn invalid_recovery_token_does_not_log_an_operational_failure() {
+    let app = TestApp::new().await;
+
+    let (response, logs) = capture_error_logs(app.get("/recover?token=invalid", None)).await;
+    let body = body_string(response).await;
+
+    assert!(body.contains("invalid or expired"));
+    assert!(
+        logs.is_empty(),
+        "expected invalid tokens should not log: {logs}"
+    );
+}
+
+#[tokio::test]
+async fn consume_and_link_allows_exactly_one_concurrent_redeemer() {
+    let database = FileDatabase::new("concurrent-redemption");
+    let pool = database.pool(5).await;
+    let now = Utc::now();
+    let issued = issue_invitation(&pool, "Concurrent", now).await.unwrap();
+    let claim = validate_token(&pool, &issued.plaintext_token, now)
+        .await
+        .unwrap();
+    let profile = GitHubProfile {
+        user_id: "concurrent-github-id".into(),
+        login: "concurrent-login".into(),
+        name: None,
+    };
+    let barrier = Arc::new(tokio::sync::Barrier::new(3));
+    let first = {
+        let pool = pool.clone();
+        let claim = claim.clone();
+        let profile = profile.clone();
+        let barrier = barrier.clone();
+        tokio::spawn(async move {
+            barrier.wait().await;
+            consume_and_link(&pool, &claim, &profile, now).await
+        })
+    };
+    let second = {
+        let pool = pool.clone();
+        let claim = claim.clone();
+        let profile = profile.clone();
+        let barrier = barrier.clone();
+        tokio::spawn(async move {
+            barrier.wait().await;
+            consume_and_link(&pool, &claim, &profile, now).await
+        })
+    };
+
+    barrier.wait().await;
+    let results = [first.await.unwrap(), second.await.unwrap()];
+
+    assert_eq!(results.iter().filter(|result| result.is_ok()).count(), 1);
+    assert_eq!(
+        results
+            .iter()
+            .filter(|result| matches!(result, Err(ConnectionTokenError::InvalidToken)))
+            .count(),
+        1
+    );
+    let user: (Option<String>, Option<String>, i64) =
+        sqlx::query_as("SELECT github_user_id, github_login, auth_version FROM users WHERE id = ?")
+            .bind(&issued.user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(
+        user,
+        (
+            Some("concurrent-github-id".into()),
+            Some("concurrent-login".into()),
+            2
+        )
+    );
+    let consumed_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM auth_connection_tokens WHERE user_id = ? AND consumed_at IS NOT NULL",
+    )
+    .bind(&issued.user_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(consumed_count, 1);
+    pool.close().await;
+}
+
+#[tokio::test]
+async fn consume_and_link_rolls_back_token_transition_when_user_update_fails() {
+    let database = FileDatabase::new("redemption-rollback");
+    let pool = database.pool(2).await;
+    let now = Utc::now();
+    let issued = issue_invitation(&pool, "Rollback", now).await.unwrap();
+    let claim = validate_token(&pool, &issued.plaintext_token, now)
+        .await
+        .unwrap();
+    sqlx::query(
+        "CREATE TRIGGER reject_github_link BEFORE UPDATE OF github_user_id ON users \
+         BEGIN SELECT RAISE(ABORT, 'hostile-trigger-secret'); END",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    let profile = GitHubProfile {
+        user_id: "rollback-github-id".into(),
+        login: "rollback-login".into(),
+        name: None,
+    };
+
+    let error = consume_and_link(&pool, &claim, &profile, now)
+        .await
+        .unwrap_err();
+
+    assert!(matches!(error, ConnectionTokenError::Database(_)));
+    let consumed_at: Option<String> =
+        sqlx::query_scalar("SELECT consumed_at FROM auth_connection_tokens WHERE id = ?")
+            .bind(&claim.token_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(consumed_at, None);
+    let user: (Option<String>, Option<String>, i64) =
+        sqlx::query_as("SELECT github_user_id, github_login, auth_version FROM users WHERE id = ?")
+            .bind(&claim.user_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(user, (None, None, 1));
+    pool.close().await;
+}
+
+#[tokio::test]
 async fn invitation_is_hashed_single_use_and_expires_in_four_hours() {
     let app = TestApp::new().await;
     let now = Utc::now();
@@ -854,6 +1009,21 @@ impl FileDatabase {
             std::path::PathBuf::from(path)
         };
         [self.path.clone(), with_suffix("-wal"), with_suffix("-shm")]
+    }
+
+    async fn pool(&self, max_connections: u32) -> sqlx::SqlitePool {
+        let options = sqlx::sqlite::SqliteConnectOptions::from_str(&self.url())
+            .unwrap()
+            .create_if_missing(true)
+            .journal_mode(sqlx::sqlite::SqliteJournalMode::Wal)
+            .busy_timeout(StdDuration::from_secs(5));
+        let pool = sqlx::sqlite::SqlitePoolOptions::new()
+            .max_connections(max_connections)
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        pool
     }
 }
 
