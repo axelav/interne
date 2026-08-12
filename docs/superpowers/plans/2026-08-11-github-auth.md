@@ -6,7 +6,7 @@
 
 **Architecture:** Add a mockable GitHub provider at the application boundary, keep OAuth and connection state in server-side sessions, and identify users by GitHub's stable numeric ID. A dedicated connection-token module owns four-hour invitation and recovery credentials; protected routes continue to depend only on `AuthUser`.
 
-**Tech Stack:** Rust 1.90, Axum 0.8, SQLite via sqlx 0.8, Askama 0.15, tower-sessions 0.15, reqwest 0.12 with rustls, SHA-256, PKCE S256, GitHub OAuth web flow
+**Tech Stack:** Rust 1.94, Axum 0.8, SQLite via sqlx 0.9, Askama 0.15, tower-sessions 0.15, reqwest 0.12 with rustls, SHA-256, PKCE S256, GitHub OAuth web flow
 
 ## Global Constraints
 
@@ -59,7 +59,16 @@
 **Files:**
 - Create: `migrations/003_github_auth.sql`
 - Create: `tests/migrations.rs`
-- Modify: `src/models/user.rs`
+- Modify: `src/models/user.rs`, `Cargo.toml`, `Cargo.lock`, and `Dockerfile`
+- Add: `docs/research/2026-08-11-sqlx-no-transaction.md`
+
+**Compatibility upgrade checkpoint:** Upgrade both direct SQLx declarations to
+0.9, raise the Docker builder to Rust 1.94, and pin
+`tower-sessions-sqlx-store` to an SQLx 0.9-compatible upstream commit. SQLx
+0.9 is required because its SQLite migrator honors `-- no-transaction`, which
+allows migration 003 to set `PRAGMA foreign_keys = OFF` before opening its own
+transaction. Regenerate `Cargo.lock` and complete the focused migration and
+full regression suites after the upgrade.
 
 **Interfaces:**
 - Produces: `User { invite_code: Option<String>, github_user_id: Option<String>, github_login: Option<String>, auth_version: i64 }`
