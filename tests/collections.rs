@@ -1,7 +1,7 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{assert_hx_redirect, assert_redirect, body_string, TestApp};
+use common::{TestApp, assert_hx_redirect, assert_redirect, body_string};
 
 // --- CRUD ---
 
@@ -28,9 +28,7 @@ async fn create_collection_empty_name_shows_error() {
     let (_user_id, github_user_id) = app.create_user("Test User").await;
     let cookie = app.login(&github_user_id).await;
 
-    let resp = app
-        .post_form("/collections", "name=", Some(&cookie))
-        .await;
+    let resp = app.post_form("/collections", "name=", Some(&cookie)).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
     assert!(html.contains("Name is required"));
@@ -330,12 +328,11 @@ async fn regenerate_invite_as_owner() {
     )
     .await;
 
-    let (new_code,): (String,) =
-        sqlx::query_as("SELECT invite_code FROM collections WHERE id = ?")
-            .bind(&col_id)
-            .fetch_one(&app.db)
-            .await
-            .unwrap();
+    let (new_code,): (String,) = sqlx::query_as("SELECT invite_code FROM collections WHERE id = ?")
+        .bind(&col_id)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
     assert_ne!(new_code, "old-code");
 }
 
@@ -421,11 +418,7 @@ async fn member_leaves_collection() {
     .unwrap();
 
     let resp = app
-        .post_form(
-            &format!("/collections/{}/leave", col_id),
-            "",
-            Some(&cookie),
-        )
+        .post_form(&format!("/collections/{}/leave", col_id), "", Some(&cookie))
         .await;
     assert_redirect(&resp, "/collections");
 

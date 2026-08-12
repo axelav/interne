@@ -1,17 +1,17 @@
 use axum::{
+    Json, Router,
     extract::State,
-    http::{header, HeaderMap, HeaderValue},
+    http::{HeaderMap, HeaderValue, header},
     response::IntoResponse,
     routing::get,
-    Json, Router,
 };
 use serde::Serialize;
 use sqlx::FromRow;
 
+use crate::AppState;
 use crate::auth::AuthUser;
 use crate::error::AppError;
 use crate::models::Interval;
-use crate::AppState;
 
 #[derive(FromRow)]
 #[allow(dead_code)]
@@ -101,14 +101,21 @@ async fn export_data(
         entries: export_entries,
     };
 
-    let filename = format!("interne-export-{}.json", chrono::Local::now().format("%Y-%m-%d"));
+    let filename = format!(
+        "interne-export-{}.json",
+        chrono::Local::now().format("%Y-%m-%d")
+    );
     let content_disposition = format!("attachment; filename=\"{}\"", filename);
 
     let mut headers = HeaderMap::new();
-    headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
     headers.insert(
         header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&content_disposition).expect("date format produces valid header chars"),
+        HeaderValue::from_str(&content_disposition)
+            .expect("date format produces valid header chars"),
     );
 
     Ok((headers, Json(export)))

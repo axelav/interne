@@ -1,19 +1,19 @@
 use askama::Template;
 use axum::{
+    Form, Router,
     extract::{Path, State},
     response::{Html, IntoResponse, Redirect},
     routing::{delete, get, post},
-    Form, Router,
 };
 use chrono::{DateTime, Duration, Utc};
 use serde::Deserialize;
 use sqlx::FromRow;
 use std::collections::HashMap;
 
+use crate::AppState;
 use crate::auth::AuthUser;
 use crate::error::AppError;
 use crate::models::{Collection, Entry, Interval, User, Visit};
-use crate::AppState;
 
 #[derive(Template)]
 #[template(path = "entries/list.html")]
@@ -135,7 +135,10 @@ fn validate_entry_form(form: &EntryForm) -> HashMap<String, String> {
     let mut errors = HashMap::new();
 
     if form.duration < 1 {
-        errors.insert("duration".to_string(), "Duration must be at least 1".to_string());
+        errors.insert(
+            "duration".to_string(),
+            "Duration must be at least 1".to_string(),
+        );
     }
 
     if form.url.trim().is_empty() {
@@ -149,13 +152,19 @@ fn validate_entry_form(form: &EntryForm) -> HashMap<String, String> {
     }
 
     if form.title.len() > 500 {
-        errors.insert("title".to_string(), "Title must be under 500 characters".to_string());
+        errors.insert(
+            "title".to_string(),
+            "Title must be under 500 characters".to_string(),
+        );
     }
 
     if let Some(ref desc) = form.description
         && desc.len() > 5000
     {
-        errors.insert("description".to_string(), "Description must be under 5000 characters".to_string());
+        errors.insert(
+            "description".to_string(),
+            "Description must be under 5000 characters".to_string(),
+        );
     }
 
     errors
@@ -285,7 +294,7 @@ async fn fetch_entries_for_user(db: &sqlx::SqlitePool, user_id: &str) -> Vec<(En
         )
         GROUP BY e.id
         ORDER BY e.dismissed_at DESC NULLS FIRST
-        "#
+        "#,
     )
     .bind(user_id)
     .bind(user_id)
@@ -293,7 +302,10 @@ async fn fetch_entries_for_user(db: &sqlx::SqlitePool, user_id: &str) -> Vec<(En
     .await
     .unwrap_or_default();
 
-    entries.into_iter().map(|e| e.into_entry_and_count()).collect()
+    entries
+        .into_iter()
+        .map(|e| e.into_entry_and_count())
+        .collect()
 }
 
 pub fn build_entry_view(entry: Entry, visit_count: i64, now: DateTime<Utc>) -> EntryView {
@@ -377,7 +389,7 @@ async fn visit_entry(
         SELECT * FROM entries WHERE id = ? AND (user_id = ? OR collection_id IN (
             SELECT collection_id FROM collection_members WHERE user_id = ?
         ))
-        "#
+        "#,
     )
     .bind(&id)
     .bind(&user.id)
@@ -393,15 +405,13 @@ async fn visit_entry(
 
     // Create visit record
     let visit = Visit::new(id.clone(), user.id.clone());
-    sqlx::query(
-        "INSERT INTO visits (id, entry_id, user_id, visited_at) VALUES (?, ?, ?, ?)"
-    )
-    .bind(&visit.id)
-    .bind(&visit.entry_id)
-    .bind(&visit.user_id)
-    .bind(&visit.visited_at)
-    .execute(&state.db)
-    .await?;
+    sqlx::query("INSERT INTO visits (id, entry_id, user_id, visited_at) VALUES (?, ?, ?, ?)")
+        .bind(&visit.id)
+        .bind(&visit.entry_id)
+        .bind(&visit.user_id)
+        .bind(&visit.visited_at)
+        .execute(&state.db)
+        .await?;
 
     // Update entry dismissed_at
     sqlx::query("UPDATE entries SET dismissed_at = ?, updated_at = ? WHERE id = ?")
@@ -446,7 +456,7 @@ async fn new_entry_form(
         SELECT c.* FROM collections c
         LEFT JOIN collection_members cm ON cm.collection_id = c.id
         WHERE c.owner_id = ? OR cm.user_id = ?
-        "#
+        "#,
     )
     .bind(&user.id)
     .bind(&user.id)
@@ -477,7 +487,7 @@ async fn create_entry(
             SELECT c.* FROM collections c
             LEFT JOIN collection_members cm ON cm.collection_id = c.id
             WHERE c.owner_id = ? OR cm.user_id = ?
-            "#
+            "#,
         )
         .bind(&user.id)
         .bind(&user.id)
@@ -522,7 +532,11 @@ async fn create_entry(
 
     // Handle tags
     if let Some(tags) = form.tags {
-        for tag_name in tags.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()) {
+        for tag_name in tags
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+        {
             // Get or create tag
             let tag_id: Option<(String,)> = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
                 .bind(&tag_name)
@@ -561,13 +575,11 @@ async fn edit_entry_form(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
     // Verify user owns this entry
-    let entry: Option<Entry> = sqlx::query_as(
-        "SELECT * FROM entries WHERE id = ? AND user_id = ?"
-    )
-    .bind(&id)
-    .bind(&user.id)
-    .fetch_optional(&state.db)
-    .await?;
+    let entry: Option<Entry> = sqlx::query_as("SELECT * FROM entries WHERE id = ? AND user_id = ?")
+        .bind(&id)
+        .bind(&user.id)
+        .fetch_optional(&state.db)
+        .await?;
 
     let Some(entry) = entry else {
         return Ok(Redirect::to("/").into_response());
@@ -578,7 +590,7 @@ async fn edit_entry_form(
         SELECT c.* FROM collections c
         LEFT JOIN collection_members cm ON cm.collection_id = c.id
         WHERE c.owner_id = ? OR cm.user_id = ?
-        "#
+        "#,
     )
     .bind(&user.id)
     .bind(&user.id)
@@ -587,14 +599,18 @@ async fn edit_entry_form(
     .unwrap_or_default();
 
     let tags: Vec<(String,)> = sqlx::query_as(
-        "SELECT t.name FROM tags t JOIN entry_tags et ON et.tag_id = t.id WHERE et.entry_id = ?"
+        "SELECT t.name FROM tags t JOIN entry_tags et ON et.tag_id = t.id WHERE et.entry_id = ?",
     )
     .bind(&id)
     .fetch_all(&state.db)
     .await
     .unwrap_or_default();
 
-    let tags_string = tags.into_iter().map(|(name,)| name).collect::<Vec<_>>().join(", ");
+    let tags_string = tags
+        .into_iter()
+        .map(|(name,)| name)
+        .collect::<Vec<_>>()
+        .join(", ");
 
     let template = EntryFormTemplate {
         entry: Some(entry),
@@ -614,13 +630,11 @@ async fn update_entry(
     Form(form): Form<EntryForm>,
 ) -> Result<impl IntoResponse, AppError> {
     // Verify user owns this entry
-    let entry: Option<Entry> = sqlx::query_as(
-        "SELECT * FROM entries WHERE id = ? AND user_id = ?"
-    )
-    .bind(&id)
-    .bind(&user.id)
-    .fetch_optional(&state.db)
-    .await?;
+    let entry: Option<Entry> = sqlx::query_as("SELECT * FROM entries WHERE id = ? AND user_id = ?")
+        .bind(&id)
+        .bind(&user.id)
+        .fetch_optional(&state.db)
+        .await?;
 
     let Some(entry) = entry else {
         return Ok(Redirect::to("/").into_response());
@@ -633,7 +647,7 @@ async fn update_entry(
             SELECT c.* FROM collections c
             LEFT JOIN collection_members cm ON cm.collection_id = c.id
             WHERE c.owner_id = ? OR cm.user_id = ?
-            "#
+            "#,
         )
         .bind(&user.id)
         .bind(&user.id)
@@ -680,7 +694,11 @@ async fn update_entry(
         .await?;
 
     if let Some(tags) = form.tags {
-        for tag_name in tags.split(',').map(|s| s.trim().to_lowercase()).filter(|s| !s.is_empty()) {
+        for tag_name in tags
+            .split(',')
+            .map(|s| s.trim().to_lowercase())
+            .filter(|s| !s.is_empty())
+        {
             let tag_id: Option<(String,)> = sqlx::query_as("SELECT id FROM tags WHERE name = ?")
                 .bind(&tag_name)
                 .fetch_optional(&state.db)
@@ -717,13 +735,11 @@ async fn delete_entry(
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
     // Verify user owns this entry
-    let entry: Option<Entry> = sqlx::query_as(
-        "SELECT * FROM entries WHERE id = ? AND user_id = ?"
-    )
-    .bind(&id)
-    .bind(&user.id)
-    .fetch_optional(&state.db)
-    .await?;
+    let entry: Option<Entry> = sqlx::query_as("SELECT * FROM entries WHERE id = ? AND user_id = ?")
+        .bind(&id)
+        .bind(&user.id)
+        .fetch_optional(&state.db)
+        .await?;
 
     if entry.is_none() {
         return Ok(([("HX-Redirect", "/")], "").into_response());
@@ -887,7 +903,10 @@ mod tests {
     fn last_viewed_plural_minutes() {
         let now = Utc::now();
         let dismissed = Some((now - Duration::minutes(45)).to_rfc3339());
-        assert_eq!(format_last_viewed(&dismissed, now).unwrap(), "45 minutes ago");
+        assert_eq!(
+            format_last_viewed(&dismissed, now).unwrap(),
+            "45 minutes ago"
+        );
     }
 
     #[test]

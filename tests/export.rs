@@ -1,7 +1,7 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{body_string, TestApp};
+use common::{TestApp, body_string};
 
 #[tokio::test]
 async fn export_returns_json_with_entries() {

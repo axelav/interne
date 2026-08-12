@@ -58,13 +58,29 @@ async fn github_auth_migration_preserves_users_and_related_data() {
     .fetch_one(&mut db)
     .await
     .unwrap();
-    assert_eq!(user.get::<Option<String>, _>("invite_code").as_deref(), Some("legacy"));
+    assert_eq!(
+        user.get::<Option<String>, _>("invite_code").as_deref(),
+        Some("legacy")
+    );
     assert_eq!(user.get::<Option<String>, _>("github_user_id"), None);
     assert_eq!(user.get::<i64, _>("auth_version"), 1);
-    assert_eq!(user.get::<String, _>("created_at"), "2025-01-02T03:04:05+00:00");
-    assert_eq!(user.get::<String, _>("updated_at"), "2026-06-07T08:09:10+00:00");
+    assert_eq!(
+        user.get::<String, _>("created_at"),
+        "2025-01-02T03:04:05+00:00"
+    );
+    assert_eq!(
+        user.get::<String, _>("updated_at"),
+        "2026-06-07T08:09:10+00:00"
+    );
 
-    for table in ["entries", "visits", "collections", "collection_members", "tags", "entry_tags"] {
+    for table in [
+        "entries",
+        "visits",
+        "collections",
+        "collection_members",
+        "tags",
+        "entry_tags",
+    ] {
         let count: i64 = sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
             .fetch_one(&mut db)
             .await
@@ -89,5 +105,8 @@ async fn github_auth_migration_preserves_users_and_related_data() {
     )
     .execute(&mut db)
     .await;
-    assert!(orphan_result.is_err(), "foreign keys must reject orphan rows");
+    assert!(
+        orphan_result.is_err(),
+        "foreign keys must reject orphan rows"
+    );
 }

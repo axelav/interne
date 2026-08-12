@@ -1,7 +1,7 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{assert_hx_redirect, assert_redirect, body_string, TestApp};
+use common::{TestApp, assert_hx_redirect, assert_redirect, body_string};
 
 #[tokio::test]
 async fn create_entry_with_valid_form() {
@@ -39,7 +39,8 @@ async fn create_entry_with_bare_domain_normalizes_url() {
     let cookie = app.login(&github_user_id).await;
 
     // "yahoo.com" should be accepted and normalized to "https://yahoo.com/"
-    let body = "url=yahoo.com&title=Yahoo&description=&duration=3&interval=days&tags=&collection_id=";
+    let body =
+        "url=yahoo.com&title=Yahoo&description=&duration=3&interval=days&tags=&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
     assert_redirect(&resp, "/");
 
@@ -94,7 +95,8 @@ async fn create_entry_with_invalid_url_shows_error() {
     let cookie = app.login(&github_user_id).await;
 
     // "not a url" has no valid domain structure
-    let body = "url=not+a+url&title=Test&description=&duration=3&interval=days&tags=&collection_id=";
+    let body =
+        "url=not+a+url&title=Test&description=&duration=3&interval=days&tags=&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
@@ -351,12 +353,11 @@ async fn visit_entry_updates_availability() {
     assert_eq!(visit_count.0, 1);
 
     // Verify dismissed_at was set
-    let entry: (Option<String>,) =
-        sqlx::query_as("SELECT dismissed_at FROM entries WHERE id = ?")
-            .bind(&entry_id)
-            .fetch_one(&app.db)
-            .await
-            .unwrap();
+    let entry: (Option<String>,) = sqlx::query_as("SELECT dismissed_at FROM entries WHERE id = ?")
+        .bind(&entry_id)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
     assert!(entry.0.is_some());
 
     // Entry should NOT appear on home page (no longer available)
@@ -591,12 +592,11 @@ async fn update_entry_replaces_tags() {
     app.post_form("/entries", body, Some(&cookie)).await;
 
     // Find the entry
-    let (entry_id,): (String,) =
-        sqlx::query_as("SELECT id FROM entries WHERE user_id = ?")
-            .bind(&user_id)
-            .fetch_one(&app.db)
-            .await
-            .unwrap();
+    let (entry_id,): (String,) = sqlx::query_as("SELECT id FROM entries WHERE user_id = ?")
+        .bind(&user_id)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
 
     // Update with different tags
     let body = "url=https%3A%2F%2Fexample.com&title=Tagged&description=&duration=3&interval=days&tags=python%2C+api&collection_id=";
@@ -714,16 +714,14 @@ async fn unseen_shows_only_unvisited_entries() {
 
     // Add a visit for the seen entry
     let visit_id = uuid::Uuid::new_v4().to_string();
-    sqlx::query(
-        "INSERT INTO visits (id, entry_id, user_id, visited_at) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&visit_id)
-    .bind(&e2)
-    .bind(&user_id)
-    .bind(&now)
-    .execute(&app.db)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO visits (id, entry_id, user_id, visited_at) VALUES (?, ?, ?, ?)")
+        .bind(&visit_id)
+        .bind(&e2)
+        .bind(&user_id)
+        .bind(&now)
+        .execute(&app.db)
+        .await
+        .unwrap();
 
     // /unseen should show only the unvisited entry
     let resp = app.get("/unseen", Some(&cookie)).await;

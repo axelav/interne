@@ -1,17 +1,17 @@
 use askama::Template;
 use axum::{
+    Router,
     extract::{Path, State},
     response::{Html, IntoResponse},
     routing::get,
-    Router,
 };
 use chrono::Utc;
 
+use crate::AppState;
 use crate::auth::AuthUser;
 use crate::error::AppError;
 use crate::models::User;
-use crate::routes::entries::{build_entry_view, EntryView, EntryWithCount};
-use crate::AppState;
+use crate::routes::entries::{EntryView, EntryWithCount, build_entry_view};
 
 struct TagWithCount {
     name: String,
@@ -114,7 +114,7 @@ async fn list_tags(
         WHERE e.user_id = ?
         GROUP BY t.id
         ORDER BY t.name ASC
-        "#
+        "#,
     )
     .bind(&user.id)
     .fetch_all(&state.db)
@@ -151,7 +151,7 @@ async fn show_tag(
         WHERE t.name = ? AND e.user_id = ?
         GROUP BY e.id
         ORDER BY e.dismissed_at DESC NULLS FIRST
-        "#
+        "#,
     )
     .bind(&name)
     .bind(&user.id)
