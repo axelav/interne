@@ -127,6 +127,10 @@ webmaster@honkytonk.in for an invite.” Create their account and URL with
 
 ## Production rollout
 
+Use the [GitHub authentication production rollout runbook](docs/github-auth-production-rollout.md)
+for the gated deployment, backup, proxy-log verification, real-provider smoke
+test, and rollback procedure.
+
 1. Back up the SQLite database.
 2. Configure the production OAuth app with the exact homepage and callback above,
    leaving scopes blank.
