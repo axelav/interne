@@ -1,5 +1,10 @@
 use std::env;
 use std::net::SocketAddr;
+use std::sync::Arc;
+
+use interne::AuthServices;
+use interne::config::ServerAuthConfig;
+use interne::github::GitHubOAuthClient;
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -61,10 +66,25 @@ async fn main() {
     }
 
     // Start web server
-    let secure =
-        env::var("SECURE_COOKIES").unwrap_or_else(|_| "true".to_string()) == "true";
+    let secure = env::var("SECURE_COOKIES").unwrap_or_else(|_| "true".to_string()) == "true";
 
-    let app = interne::build_app(pool, secure).await;
+    let server_auth = ServerAuthConfig::from_env().unwrap_or_else(|error| {
+        eprintln!("Authentication configuration error: {error}");
+        std::process::exit(1);
+    });
+    let github = GitHubOAuthClient::new(
+        server_auth.github.client_id,
+        server_auth.github.client_secret,
+    )
+    .unwrap_or_else(|error| {
+        eprintln!("GitHub client configuration error: {error}");
+        std::process::exit(1);
+    });
+    let auth = AuthServices {
+        config: server_auth.auth,
+        github: Arc::new(github),
+    };
+    let app = interne::build_app(pool, secure, auth).await;
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     let listener = TcpListener::bind(addr).await.unwrap();
