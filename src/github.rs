@@ -67,12 +67,25 @@ pub struct GitHubOAuthClient {
     client_id: String,
     client_secret: String,
     http: Client,
+    token_url: Url,
+    profile_url: Url,
 }
 
 impl GitHubOAuthClient {
     pub fn new(
         client_id: impl Into<String>,
         client_secret: impl Into<String>,
+    ) -> Result<Self, GitHubError> {
+        let token_url = Url::parse(TOKEN_URL).map_err(|_| GitHubError::ClientConfiguration)?;
+        let profile_url = Url::parse(PROFILE_URL).map_err(|_| GitHubError::ClientConfiguration)?;
+        Self::build(client_id, client_secret, token_url, profile_url)
+    }
+
+    fn build(
+        client_id: impl Into<String>,
+        client_secret: impl Into<String>,
+        token_url: Url,
+        profile_url: Url,
     ) -> Result<Self, GitHubError> {
         let http = Client::builder()
             .redirect(Policy::none())
@@ -83,7 +96,19 @@ impl GitHubOAuthClient {
             client_id: client_id.into(),
             client_secret: client_secret.into(),
             http,
+            token_url,
+            profile_url,
         })
+    }
+
+    #[cfg(test)]
+    fn new_with_endpoints(
+        client_id: impl Into<String>,
+        client_secret: impl Into<String>,
+        token_url: Url,
+        profile_url: Url,
+    ) -> Result<Self, GitHubError> {
+        Self::build(client_id, client_secret, token_url, profile_url)
     }
 }
 
@@ -125,7 +150,7 @@ impl GitHubProvider for GitHubOAuthClient {
     ) -> Result<GitHubProfile, GitHubError> {
         let token_response = self
             .http
-            .post(TOKEN_URL)
+            .post(self.token_url.clone())
             .header(ACCEPT, "application/json")
             .form(&[
                 ("client_id", self.client_id.as_str()),
@@ -144,7 +169,7 @@ impl GitHubProvider for GitHubOAuthClient {
 
         let github_user = self
             .http
-            .get(PROFILE_URL)
+            .get(self.profile_url.clone())
             .header(ACCEPT, "application/vnd.github+json")
             .bearer_auth(&token_response.access_token)
             .header(USER_AGENT, "interne")
@@ -171,10 +196,107 @@ pub fn pkce_challenge(verifier: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
+    use std::{collections::HashMap, time::Duration};
 
     use super::{GitHubError, GitHubOAuthClient, GitHubProvider, pkce_challenge};
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::TcpListener,
+        task::JoinHandle,
+        time::timeout,
+    };
     use url::Url;
+
+    #[derive(Debug)]
+    struct CapturedRequest {
+        method: String,
+        target: String,
+        headers: HashMap<String, String>,
+        body: String,
+    }
+
+    async fn local_server(responses: Vec<String>) -> (Url, JoinHandle<Vec<CapturedRequest>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base_url = Url::parse(&format!("http://{}/", listener.local_addr().unwrap())).unwrap();
+        let task = tokio::spawn(async move {
+            let mut captured = Vec::new();
+            for response in responses {
+                let Ok(Ok((mut socket, _))) =
+                    timeout(Duration::from_millis(500), listener.accept()).await
+                else {
+                    break;
+                };
+                captured.push(read_request(&mut socket).await);
+                socket.write_all(response.as_bytes()).await.unwrap();
+            }
+            captured
+        });
+        (base_url, task)
+    }
+
+    async fn read_request(socket: &mut tokio::net::TcpStream) -> CapturedRequest {
+        let mut bytes = Vec::new();
+        let header_end = loop {
+            let mut chunk = [0; 1024];
+            let read = socket.read(&mut chunk).await.unwrap();
+            assert_ne!(read, 0, "request ended before headers completed");
+            bytes.extend_from_slice(&chunk[..read]);
+            if let Some(index) = bytes.windows(4).position(|window| window == b"\r\n\r\n") {
+                break index + 4;
+            }
+        };
+
+        let header_text = std::str::from_utf8(&bytes[..header_end]).unwrap();
+        let mut lines = header_text.split("\r\n");
+        let mut request_line = lines.next().unwrap().split_whitespace();
+        let method = request_line.next().unwrap().to_string();
+        let target = request_line.next().unwrap().to_string();
+        let headers: HashMap<_, _> = lines
+            .filter_map(|line| line.split_once(':'))
+            .map(|(name, value)| (name.to_ascii_lowercase(), value.trim().to_string()))
+            .collect();
+        let content_length = headers
+            .get("content-length")
+            .map(|value| value.parse::<usize>().unwrap())
+            .unwrap_or(0);
+        while bytes.len() < header_end + content_length {
+            let mut chunk = [0; 1024];
+            let read = socket.read(&mut chunk).await.unwrap();
+            assert_ne!(read, 0, "request ended before body completed");
+            bytes.extend_from_slice(&chunk[..read]);
+        }
+
+        CapturedRequest {
+            method,
+            target,
+            headers,
+            body: String::from_utf8(bytes[header_end..header_end + content_length].to_vec())
+                .unwrap(),
+        }
+    }
+
+    fn response(status: &str, extra_headers: &[(&str, &str)], body: &str) -> String {
+        let mut response = format!(
+            "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n",
+            body.len()
+        );
+        for (name, value) in extra_headers {
+            response.push_str(&format!("{name}: {value}\r\n"));
+        }
+        response.push_str("\r\n");
+        response.push_str(body);
+        response
+    }
+
+    fn local_client(base_url: &Url) -> GitHubOAuthClient {
+        GitHubOAuthClient::new_with_endpoints(
+            "client-id",
+            "client-secret",
+            base_url.join("token").unwrap(),
+            base_url.join("user").unwrap(),
+        )
+        .unwrap()
+    }
 
     #[test]
     fn authorization_url_has_identity_only_parameters() {
@@ -220,5 +342,168 @@ mod tests {
             "GitHub token exchange failed"
         );
         assert_eq!(format!("{:?}", GitHubError::ProfileFetch), "ProfileFetch");
+    }
+
+    #[tokio::test]
+    async fn exchange_code_sends_the_required_requests_and_converts_numeric_id() {
+        let (base_url, server) = local_server(vec![
+            response(
+                "200 OK",
+                &[("Content-Type", "application/json")],
+                r#"{"access_token":"temporary-token"}"#,
+            ),
+            response(
+                "200 OK",
+                &[("Content-Type", "application/json")],
+                r#"{"id":12345678901234567890,"login":"octocat","name":"The Octocat"}"#,
+            ),
+        ])
+        .await;
+        let callback = Url::parse("https://interne.test/auth/github/callback").unwrap();
+
+        let profile = local_client(&base_url)
+            .exchange_code(&callback, "authorization-code", "pkce-verifier")
+            .await
+            .unwrap();
+        let requests = server.await.unwrap();
+
+        assert_eq!(
+            profile,
+            super::GitHubProfile {
+                user_id: "12345678901234567890".into(),
+                login: "octocat".into(),
+                name: Some("The Octocat".into()),
+            }
+        );
+        assert_eq!(requests.len(), 2);
+        assert_eq!(requests[0].method, "POST");
+        assert_eq!(requests[0].target, "/token");
+        assert_eq!(
+            requests[0].headers.get("accept").unwrap(),
+            "application/json"
+        );
+        let form: HashMap<_, _> = url::form_urlencoded::parse(requests[0].body.as_bytes())
+            .into_owned()
+            .collect();
+        assert_eq!(form.len(), 5);
+        assert_eq!(form.get("client_id").unwrap(), "client-id");
+        assert_eq!(form.get("client_secret").unwrap(), "client-secret");
+        assert_eq!(form.get("code").unwrap(), "authorization-code");
+        assert_eq!(form.get("redirect_uri").unwrap(), callback.as_str());
+        assert_eq!(form.get("code_verifier").unwrap(), "pkce-verifier");
+
+        assert_eq!(requests[1].method, "GET");
+        assert_eq!(requests[1].target, "/user");
+        assert_eq!(
+            requests[1].headers.get("accept").unwrap(),
+            "application/vnd.github+json"
+        );
+        assert_eq!(
+            requests[1].headers.get("authorization").unwrap(),
+            "Bearer temporary-token"
+        );
+        assert_eq!(requests[1].headers.get("user-agent").unwrap(), "interne");
+        assert_eq!(
+            requests[1].headers.get("x-github-api-version").unwrap(),
+            "2022-11-28"
+        );
+    }
+
+    #[tokio::test]
+    async fn token_exchange_refuses_redirects() {
+        let (base_url, server) = local_server(vec![
+            response("302 Found", &[("Location", "/redirected")], ""),
+            response(
+                "200 OK",
+                &[("Content-Type", "application/json")],
+                r#"{"access_token":"redirected-token"}"#,
+            ),
+        ])
+        .await;
+
+        let error = local_client(&base_url)
+            .exchange_code(
+                &Url::parse("https://interne.test/auth/github/callback").unwrap(),
+                "code",
+                "verifier",
+            )
+            .await
+            .unwrap_err();
+        let requests = server.await.unwrap();
+
+        assert_eq!(error, GitHubError::TokenExchange);
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].target, "/token");
+    }
+
+    #[tokio::test]
+    async fn token_status_and_json_failures_are_safe_stage_errors() {
+        for response in [
+            response("502 Bad Gateway", &[], "hostile-token-status-body"),
+            response(
+                "200 OK",
+                &[("Content-Type", "application/json")],
+                "hostile-token-json-body",
+            ),
+        ] {
+            let (base_url, server) = local_server(vec![response]).await;
+            let error = local_client(&base_url)
+                .exchange_code(
+                    &Url::parse("https://interne.test/auth/github/callback").unwrap(),
+                    "secret-code",
+                    "secret-verifier",
+                )
+                .await
+                .unwrap_err();
+            server.await.unwrap();
+
+            assert_eq!(error, GitHubError::TokenExchange);
+            let rendered = format!("{error} {error:?}");
+            for secret in ["hostile", "secret-code", "secret-verifier"] {
+                assert!(!rendered.contains(secret));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn profile_status_and_json_failures_are_safe_stage_errors() {
+        for profile_response in [
+            response("502 Bad Gateway", &[], "hostile-profile-status-body"),
+            response(
+                "200 OK",
+                &[("Content-Type", "application/json")],
+                "hostile-profile-json-body",
+            ),
+        ] {
+            let (base_url, server) = local_server(vec![
+                response(
+                    "200 OK",
+                    &[("Content-Type", "application/json")],
+                    r#"{"access_token":"secret-temporary-token"}"#,
+                ),
+                profile_response,
+            ])
+            .await;
+            let error = local_client(&base_url)
+                .exchange_code(
+                    &Url::parse("https://interne.test/auth/github/callback").unwrap(),
+                    "secret-code",
+                    "secret-verifier",
+                )
+                .await
+                .unwrap_err();
+            server.await.unwrap();
+
+            assert_eq!(error, GitHubError::ProfileFetch);
+            let rendered = format!("{error} {error:?}");
+            for secret in [
+                "hostile",
+                "secret-temporary-token",
+                "secret-code",
+                "secret-verifier",
+            ] {
+                assert!(!rendered.contains(secret));
+            }
+        }
     }
 }

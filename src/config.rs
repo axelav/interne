@@ -71,6 +71,7 @@ impl AuthConfig {
         let is_bare_origin = !has_credentials
             && public_base_url.host().is_some()
             && public_base_url.path() == "/"
+            && has_root_or_absent_path(original_public_base_url)
             && public_base_url.query().is_none()
             && public_base_url.fragment().is_none();
         if !is_bare_origin {
@@ -92,6 +93,14 @@ impl AuthConfig {
             signup_mode,
         })
     }
+}
+
+fn has_root_or_absent_path(original: &str) -> bool {
+    let Some((_, remainder)) = original.split_once("://") else {
+        return false;
+    };
+    let path_and_suffix = remainder.find('/').map(|index| &remainder[index..]);
+    matches!(path_and_suffix, None | Some("/"))
 }
 
 fn has_literal_loopback_authority(original: &str) -> bool {
@@ -192,6 +201,24 @@ mod tests {
                 "{invalid} must be rejected"
             );
         }
+    }
+
+    #[test]
+    fn public_base_url_rejects_paths_that_normalize_to_root() {
+        for invalid in [
+            "https://interne.test/a/..",
+            "https://interne.test/./",
+            "https://interne.test/%2e",
+            "https://interne.test\\path",
+        ] {
+            assert!(
+                AuthConfig::new(invalid, SignupMode::Closed).is_err(),
+                "{invalid} must be rejected"
+            );
+        }
+
+        assert!(AuthConfig::new("https://interne.test", SignupMode::Closed).is_ok());
+        assert!(AuthConfig::new("https://interne.test/", SignupMode::Closed).is_ok());
     }
 
     #[test]
