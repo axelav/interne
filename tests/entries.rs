@@ -192,11 +192,9 @@ async fn edit_entry_as_owner() {
     assert!(html.contains("Original Title"));
 
     // POST update
-    let body = format!(
-        "url=https%3A%2F%2Fexample.com&title=Updated+Title&description=&duration=5&interval=weeks&tags=&collection_id="
-    );
+    let body = "url=https%3A%2F%2Fexample.com&title=Updated+Title&description=&duration=5&interval=weeks&tags=&collection_id=";
     let resp = app
-        .post_form(&format!("/entries/{}", entry_id), &body, Some(&cookie))
+        .post_form(&format!("/entries/{}", entry_id), body, Some(&cookie))
         .await;
     assert_redirect(&resp, "/");
 }

@@ -4,10 +4,10 @@ use std::str::FromStr;
 
 pub async fn init_pool(database_url: &str) -> SqlitePool {
     // Ensure data directory exists
-    if let Some(path) = database_url.strip_prefix("sqlite:") {
-        if let Some(parent) = Path::new(path).parent() {
-            std::fs::create_dir_all(parent).ok();
-        }
+    if let Some(path) = database_url.strip_prefix("sqlite:")
+        && let Some(parent) = Path::new(path).parent()
+    {
+        std::fs::create_dir_all(parent).ok();
     }
 
     let options = SqliteConnectOptions::from_str(database_url)

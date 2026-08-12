@@ -92,7 +92,7 @@ pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> R
         .bind(&entry.title)
         .bind(&entry.description)
         .bind(duration)
-        .bind(&interval)
+        .bind(interval)
         .bind(&entry.dismissed_at)
         .bind(&created_at)
         .bind(&updated_at)
