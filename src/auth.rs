@@ -10,15 +10,19 @@ use serde::{Deserialize, Serialize};
 use tower_sessions::Session;
 
 use crate::AppState;
+use crate::github::GitHubProfile;
 use crate::models::User;
 
 const USER_ID_KEY: &str = "user_id";
 const AUTH_VERSION_KEY: &str = "auth_version";
 const OAUTH_ATTEMPT_KEY: &str = "oauth_attempt";
+const MIGRATION_SESSION_KEY: &str = "migration_session";
+const PENDING_CONNECTION_KEY: &str = "pending_connection";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OAuthPurpose {
     Login,
+    Link { user_id: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -27,6 +31,50 @@ pub struct OAuthAttempt {
     pub pkce_verifier: String,
     pub purpose: OAuthPurpose,
     pub expires_at: i64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MigrationSession {
+    pub user_id: String,
+    pub expires_at: i64,
+}
+
+impl MigrationSession {
+    pub fn new(user_id: String, now: DateTime<Utc>) -> Self {
+        Self {
+            user_id,
+            expires_at: now.timestamp() + 1_800,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ConnectionProof {
+    LegacyInvite,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PendingConnection {
+    pub user_id: String,
+    pub github_profile: GitHubProfile,
+    pub proof: ConnectionProof,
+    pub expires_at: i64,
+}
+
+impl PendingConnection {
+    pub fn new(
+        user_id: String,
+        github_profile: GitHubProfile,
+        proof: ConnectionProof,
+        now: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            user_id,
+            github_profile,
+            proof,
+            expires_at: now.timestamp() + 600,
+        }
+    }
 }
 
 impl OAuthAttempt {
@@ -63,6 +111,51 @@ pub async fn take_oauth_attempt(
     session.remove(OAUTH_ATTEMPT_KEY).await
 }
 
+pub async fn store_migration_session(
+    session: &Session,
+    migration: &MigrationSession,
+) -> Result<(), tower_sessions::session::Error> {
+    session.remove::<String>(USER_ID_KEY).await?;
+    session.remove::<i64>(AUTH_VERSION_KEY).await?;
+    session
+        .remove::<PendingConnection>(PENDING_CONNECTION_KEY)
+        .await?;
+    session.insert(MIGRATION_SESSION_KEY, migration).await
+}
+
+pub async fn get_migration_session(
+    session: &Session,
+) -> Result<Option<MigrationSession>, tower_sessions::session::Error> {
+    session.get(MIGRATION_SESSION_KEY).await
+}
+
+pub async fn take_migration_session(
+    session: &Session,
+) -> Result<Option<MigrationSession>, tower_sessions::session::Error> {
+    session.remove(MIGRATION_SESSION_KEY).await
+}
+
+pub async fn store_pending_connection(
+    session: &Session,
+    pending: &PendingConnection,
+) -> Result<(), tower_sessions::session::Error> {
+    session.remove::<String>(USER_ID_KEY).await?;
+    session.remove::<i64>(AUTH_VERSION_KEY).await?;
+    session.insert(PENDING_CONNECTION_KEY, pending).await
+}
+
+pub async fn get_pending_connection(
+    session: &Session,
+) -> Result<Option<PendingConnection>, tower_sessions::session::Error> {
+    session.get(PENDING_CONNECTION_KEY).await
+}
+
+pub async fn take_pending_connection(
+    session: &Session,
+) -> Result<Option<PendingConnection>, tower_sessions::session::Error> {
+    session.remove(PENDING_CONNECTION_KEY).await
+}
+
 fn session_identity(user_id: Option<String>, auth_version: Option<i64>) -> Option<(String, i64)> {
     Some((user_id?, auth_version?))
 }
@@ -79,6 +172,18 @@ impl FromRequestParts<AppState> for AuthUser {
         let session = Session::from_request_parts(parts, state)
             .await
             .map_err(|_| AuthRedirect)?;
+
+        let migration: Option<MigrationSession> = session
+            .get(MIGRATION_SESSION_KEY)
+            .await
+            .map_err(|_| AuthRedirect)?;
+        let pending: Option<PendingConnection> = session
+            .get(PENDING_CONNECTION_KEY)
+            .await
+            .map_err(|_| AuthRedirect)?;
+        if migration.is_some() || pending.is_some() {
+            return Err(AuthRedirect);
+        }
 
         let user_id: Option<String> = session.get(USER_ID_KEY).await.ok().flatten();
         let auth_version: Option<i64> = session.get(AUTH_VERSION_KEY).await.ok().flatten();
@@ -111,6 +216,12 @@ pub async fn login_user(
     session: &Session,
     user: &User,
 ) -> Result<(), tower_sessions::session::Error> {
+    session
+        .remove::<MigrationSession>(MIGRATION_SESSION_KEY)
+        .await?;
+    session
+        .remove::<PendingConnection>(PENDING_CONNECTION_KEY)
+        .await?;
     session.insert(USER_ID_KEY, &user.id).await?;
     session.insert(AUTH_VERSION_KEY, user.auth_version).await
 }
@@ -121,12 +232,43 @@ pub async fn logout_user(session: &Session) -> Result<(), tower_sessions::sessio
 
 #[cfg(test)]
 mod tests {
-    use super::session_identity;
+    use chrono::DateTime;
+
+    use super::{ConnectionProof, MigrationSession, PendingConnection, session_identity};
+    use crate::github::GitHubProfile;
 
     #[test]
     fn missing_auth_version_rejects_a_known_user_id() {
         let identity = session_identity(Some("known-user".into()), None);
 
         assert_eq!(identity, None);
+    }
+
+    #[test]
+    fn migration_sessions_expire_after_thirty_minutes() {
+        let now = DateTime::from_timestamp(1_000_000, 0).unwrap();
+
+        let migration = MigrationSession::new("legacy-user".into(), now);
+
+        assert_eq!(migration.expires_at, 1_001_800);
+    }
+
+    #[test]
+    fn pending_connections_expire_after_ten_minutes() {
+        let now = DateTime::from_timestamp(1_000_000, 0).unwrap();
+        let profile = GitHubProfile {
+            user_id: "123".into(),
+            login: "octocat".into(),
+            name: None,
+        };
+
+        let pending = PendingConnection::new(
+            "legacy-user".into(),
+            profile,
+            ConnectionProof::LegacyInvite,
+            now,
+        );
+
+        assert_eq!(pending.expires_at, 1_000_600);
     }
 }

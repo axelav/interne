@@ -3,7 +3,7 @@ mod common;
 use std::collections::HashMap;
 
 use axum::http::{Response, StatusCode};
-use common::{TestApp, assert_redirect, body_string};
+use common::{TestApp, assert_redirect, body_string, cookie_from_response};
 use interne::config::SignupMode;
 use interne::github::{GitHubError, GitHubProfile};
 
@@ -35,6 +35,394 @@ fn register_profile(app: &TestApp, code: &str, user_id: &str, login: &str, name:
 async fn callback_body(response: Response<axum::body::Body>) -> String {
     assert_eq!(response.status(), StatusCode::OK);
     body_string(response).await
+}
+
+async fn prepare_legacy_pending_connection(
+    app: &TestApp,
+    invite_code: &str,
+    code: &str,
+    github_user_id: &str,
+    github_login: &str,
+) -> String {
+    let cookie = app.legacy_login(invite_code).await;
+    let authorization_url = app.begin_github_link(&cookie).await;
+    let state = query_parameters(&authorization_url)["state"].clone();
+    register_profile(app, code, github_user_id, github_login, None);
+
+    let response = app.get(&callback_uri(code, &state), Some(&cookie)).await;
+    assert_redirect(&response, "/auth/github/confirm");
+
+    cookie
+}
+
+#[tokio::test]
+async fn legacy_user_confirms_github_and_keeps_the_same_user_id() {
+    let app = TestApp::new().await;
+    let (legacy_user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let cookie =
+        prepare_legacy_pending_connection(&app, &invite_code, "legacy-code", "901", "legacy-user")
+            .await;
+
+    let response = app
+        .post_form("/auth/github/confirm", "", Some(&cookie))
+        .await;
+    assert_redirect(&response, "/");
+    let authenticated_cookie = cookie_from_response(
+        response
+            .headers()
+            .get("set-cookie")
+            .expect("Confirmation should establish a fresh full session"),
+    );
+
+    let home = app.get("/", Some(&authenticated_cookie)).await;
+    assert_eq!(home.status(), StatusCode::OK);
+    let linked_user_id: String =
+        sqlx::query_scalar("SELECT id FROM users WHERE github_user_id = '901'")
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(linked_user_id, legacy_user_id);
+    let auth_version: i64 = sqlx::query_scalar("SELECT auth_version FROM users WHERE id = ?")
+        .bind(legacy_user_id)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+    assert_eq!(auth_version, 2);
+}
+
+#[tokio::test]
+async fn link_confirmation_nulls_legacy_invite_code() {
+    let app = TestApp::new().await;
+    let (user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let cookie =
+        prepare_legacy_pending_connection(&app, &invite_code, "null-code", "902", "linked").await;
+
+    let response = app
+        .post_form("/auth/github/confirm", "", Some(&cookie))
+        .await;
+    assert_redirect(&response, "/");
+
+    let stored_invite_code: Option<String> =
+        sqlx::query_scalar("SELECT invite_code FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(stored_invite_code, None);
+}
+
+#[tokio::test]
+async fn link_confirmation_rejects_github_id_owned_by_another_user() {
+    let app = TestApp::new().await;
+    let owner_id = app
+        .create_github_user("Owner", "903", "existing-owner")
+        .await;
+    let (legacy_user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let cookie = prepare_legacy_pending_connection(
+        &app,
+        &invite_code,
+        "duplicate-code",
+        "903",
+        "existing-owner",
+    )
+    .await;
+
+    let response = app
+        .post_form("/auth/github/confirm", "", Some(&cookie))
+        .await;
+    let body = callback_body(response).await;
+    assert!(body.contains("already connected"));
+    assert!(!body.contains(&owner_id));
+    assert!(!body.contains(&legacy_user_id));
+
+    let legacy_state: (Option<String>, Option<String>) =
+        sqlx::query_as("SELECT github_user_id, invite_code FROM users WHERE id = ?")
+            .bind(legacy_user_id)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(legacy_state.0, None);
+    assert_eq!(legacy_state.1.as_deref(), Some(invite_code.as_str()));
+}
+
+#[tokio::test]
+async fn link_callback_requires_a_live_migration_session() {
+    let app = TestApp::new().await;
+    let (_user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let cookie = app.legacy_login(&invite_code).await;
+    let authorization_url = app.begin_github_link(&cookie).await;
+    let state = query_parameters(&authorization_url)["state"].clone();
+    app.expire_migration_session(&cookie).await;
+    register_profile(&app, "orphan-code", "904", "orphan", None);
+
+    let response = app
+        .get(&callback_uri("orphan-code", &state), Some(&cookie))
+        .await;
+    let body = callback_body(response).await;
+    assert!(body.contains("couldn’t connect this GitHub account"));
+    let github_user_id: Option<String> =
+        sqlx::query_scalar("SELECT github_user_id FROM users WHERE invite_code = ?")
+            .bind(invite_code)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(github_user_id, None);
+}
+
+#[tokio::test]
+async fn link_callback_rejects_a_migration_session_for_a_different_user() {
+    let app = TestApp::new().await;
+    let (first_user_id, first_invite_code) = app.create_legacy_user("First User").await;
+    let (second_user_id, _second_invite_code) = app.create_legacy_user("Second User").await;
+    let cookie = app.legacy_login(&first_invite_code).await;
+    let authorization_url = app.begin_github_link(&cookie).await;
+    let state = query_parameters(&authorization_url)["state"].clone();
+    app.retarget_migration_session(&cookie, &second_user_id)
+        .await;
+    register_profile(&app, "retargeted-code", "912", "retargeted", None);
+
+    let response = app
+        .get(&callback_uri("retargeted-code", &state), Some(&cookie))
+        .await;
+    let body = callback_body(response).await;
+    assert!(body.contains("couldn’t connect this GitHub account"));
+    let linked_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM users WHERE id IN (?, ?) AND github_user_id IS NOT NULL",
+    )
+    .bind(first_user_id)
+    .bind(second_user_id)
+    .fetch_one(&app.db)
+    .await
+    .unwrap();
+    assert_eq!(linked_count, 0);
+}
+
+#[tokio::test]
+async fn expired_migration_session_cannot_start_linking() {
+    let app = TestApp::new().await;
+    let (_user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let cookie = app.legacy_login(&invite_code).await;
+    let page = body_string(app.get("/auth/connect", Some(&cookie)).await).await;
+    assert!(page.contains("replace your legacy invite code"));
+    app.expire_migration_session(&cookie).await;
+
+    let page = app.get("/auth/connect", Some(&cookie)).await;
+    assert_redirect(&page, "/login");
+    let start = app
+        .post_form("/auth/github/connect", "", Some(&cookie))
+        .await;
+    assert_redirect(&start, "/login");
+}
+
+#[tokio::test]
+async fn confirmation_rechecks_the_current_legacy_user_state() {
+    let app = TestApp::new().await;
+    let (user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let cookie = prepare_legacy_pending_connection(
+        &app,
+        &invite_code,
+        "stale-user-code",
+        "909",
+        "stale-user",
+    )
+    .await;
+    sqlx::query("UPDATE users SET invite_code = NULL WHERE id = ?")
+        .bind(&user_id)
+        .execute(&app.db)
+        .await
+        .unwrap();
+
+    let response = app
+        .post_form("/auth/github/confirm", "", Some(&cookie))
+        .await;
+    let body = callback_body(response).await;
+    assert!(body.contains("couldn’t connect this GitHub account"));
+    let github_user_id: Option<String> =
+        sqlx::query_scalar("SELECT github_user_id FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(github_user_id, None);
+}
+
+#[tokio::test]
+async fn completed_confirmation_cannot_be_replayed() {
+    let app = TestApp::new().await;
+    let (_user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let cookie = prepare_legacy_pending_connection(
+        &app,
+        &invite_code,
+        "confirm-replay-code",
+        "910",
+        "confirm-replay",
+    )
+    .await;
+
+    let first = app
+        .post_form("/auth/github/confirm", "", Some(&cookie))
+        .await;
+    assert_redirect(&first, "/");
+    let replay = app
+        .post_form("/auth/github/confirm", "", Some(&cookie))
+        .await;
+    let body = callback_body(replay).await;
+    assert!(body.contains("couldn’t connect this GitHub account"));
+}
+
+#[tokio::test]
+async fn normal_github_login_clears_legacy_migration_state() {
+    let app = TestApp::new().await;
+    app.create_github_user("Linked User", "911", "linked-user")
+        .await;
+    let (_legacy_user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let migration_cookie = app.legacy_login(&invite_code).await;
+    let (cookie, authorization_url) = app
+        .begin_github_login_with_cookie(Some(&migration_cookie))
+        .await;
+    let state = query_parameters(&authorization_url)["state"].clone();
+    register_profile(&app, "normal-code", "911", "linked-user", None);
+
+    let response = app
+        .get(&callback_uri("normal-code", &state), Some(&cookie))
+        .await;
+    assert_redirect(&response, "/");
+    let full_cookie = cookie_from_response(
+        response
+            .headers()
+            .get("set-cookie")
+            .expect("Normal GitHub login should replace migration state"),
+    );
+    assert_eq!(
+        app.get("/", Some(&full_cookie)).await.status(),
+        StatusCode::OK
+    );
+}
+
+#[tokio::test]
+async fn pending_confirmation_expires_after_ten_minutes() {
+    let app = TestApp::new().await;
+    let (_user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let cookie = prepare_legacy_pending_connection(
+        &app,
+        &invite_code,
+        "expired-pending-code",
+        "905",
+        "too-late",
+    )
+    .await;
+    app.expire_pending_connection(&cookie).await;
+
+    let page = app.get("/auth/github/confirm", Some(&cookie)).await;
+    let body = callback_body(page).await;
+    assert!(body.contains("couldn’t connect this GitHub account"));
+    let confirm = app
+        .post_form("/auth/github/confirm", "", Some(&cookie))
+        .await;
+    let body = callback_body(confirm).await;
+    assert!(body.contains("couldn’t connect this GitHub account"));
+
+    let github_user_id: Option<String> =
+        sqlx::query_scalar("SELECT github_user_id FROM users WHERE invite_code = ?")
+            .bind(invite_code)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(github_user_id, None);
+}
+
+#[tokio::test]
+async fn link_confirmation_consumes_active_connection_tokens() {
+    let app = TestApp::new().await;
+    let (user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let now = chrono::Utc::now();
+    sqlx::query(
+        "INSERT INTO auth_connection_tokens \
+         (id, user_id, token_hash, purpose, created_at, expires_at, consumed_at) \
+         VALUES ('active-token', ?, 'hash', 'recovery', ?, ?, NULL)",
+    )
+    .bind(&user_id)
+    .bind(now.to_rfc3339())
+    .bind((now + chrono::Duration::hours(1)).to_rfc3339())
+    .execute(&app.db)
+    .await
+    .unwrap();
+    let cookie =
+        prepare_legacy_pending_connection(&app, &invite_code, "token-code", "906", "token-user")
+            .await;
+
+    let response = app
+        .post_form("/auth/github/confirm", "", Some(&cookie))
+        .await;
+    assert_redirect(&response, "/");
+    let consumed_at: Option<String> = sqlx::query_scalar(
+        "SELECT consumed_at FROM auth_connection_tokens WHERE id = 'active-token'",
+    )
+    .fetch_one(&app.db)
+    .await
+    .unwrap();
+    assert!(consumed_at.is_some());
+}
+
+#[tokio::test]
+async fn github_confirmation_escapes_login_and_accepts_no_identity_fields() {
+    let app = TestApp::new().await;
+    let (_user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let cookie = prepare_legacy_pending_connection(
+        &app,
+        &invite_code,
+        "escape-code",
+        "907",
+        "<script>alert(1)</script>",
+    )
+    .await;
+
+    let body = body_string(app.get("/auth/github/confirm", Some(&cookie)).await).await;
+    assert!(body.contains("&#60;script&#62;alert(1)&#60;/script&#62;"));
+    assert!(!body.contains("<script>alert(1)</script>"));
+    assert!(body.contains("action=\"/auth/github/confirm\""));
+    assert!(!body.contains("name=\"github"));
+
+    let response = app
+        .post_form(
+            "/auth/github/confirm",
+            "github_user_id=attacker&github_login=attacker",
+            Some(&cookie),
+        )
+        .await;
+    assert_redirect(&response, "/");
+    let linked_id: String =
+        sqlx::query_scalar("SELECT github_user_id FROM users WHERE github_login = ?")
+            .bind("<script>alert(1)</script>")
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(linked_id, "907");
+}
+
+#[tokio::test]
+async fn denied_link_callback_consumes_attempt() {
+    let app = TestApp::new().await;
+    let (_user_id, invite_code) = app.create_legacy_user("Legacy User").await;
+    let cookie = app.legacy_login(&invite_code).await;
+    let authorization_url = app.begin_github_link(&cookie).await;
+    let state = query_parameters(&authorization_url)["state"].clone();
+
+    let denied = app
+        .get(
+            &format!("/auth/github/callback?error=access_denied&state={state}"),
+            Some(&cookie),
+        )
+        .await;
+    let body = callback_body(denied).await;
+    assert!(body.contains("couldn’t connect this GitHub account"));
+
+    register_profile(&app, "link-replay", "908", "replay", None);
+    let replay = app
+        .get(&callback_uri("link-replay", &state), Some(&cookie))
+        .await;
+    let body = callback_body(replay).await;
+    assert!(body.contains("couldn’t complete GitHub sign-in"));
 }
 
 #[tokio::test]

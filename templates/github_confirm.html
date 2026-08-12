@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}Confirm GitHub account - Interne{% endblock %}
+
+{% block content %}
+<div class="login-page">
+    <h1 class="form-heading">Confirm GitHub account</h1>
+    <p>Connect Interne to <strong>{{ github_login }}</strong>?</p>
+    <form method="post" action="/auth/github/confirm" autocomplete="off">
+        <button type="submit">Connect GitHub</button>
+    </form>
+</div>
+{% endblock %}

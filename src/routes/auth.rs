@@ -12,7 +12,10 @@ use tower_sessions::Session;
 
 use crate::AppState;
 use crate::auth::{
-    OAuthAttempt, OAuthPurpose, login_user, logout_user, store_oauth_attempt, take_oauth_attempt,
+    ConnectionProof, MigrationSession, OAuthAttempt, OAuthPurpose, PendingConnection,
+    get_migration_session, get_pending_connection, login_user, logout_user,
+    store_migration_session, store_oauth_attempt, store_pending_connection, take_migration_session,
+    take_oauth_attempt, take_pending_connection,
 };
 use crate::config::SignupMode;
 use crate::error::AppError;
@@ -20,6 +23,9 @@ use crate::models::User;
 
 const GITHUB_SIGN_IN_ERROR: &str =
     "We couldn’t complete GitHub sign-in. Please return to login and try again.";
+const GITHUB_LINK_ERROR: &str =
+    "We couldn’t connect this GitHub account. Please return to login and try again.";
+const GITHUB_IDENTITY_IN_USE_ERROR: &str = "That GitHub account is already connected to another Interne account. Please return to login and try another account.";
 const CLOSED_SIGNUP_ERROR: &str =
     "Access isn’t open yet. Email webmaster@honkytonk.in for an invite.";
 
@@ -40,6 +46,21 @@ struct AuthErrorTemplate<'a> {
     user: Option<User>,
 }
 
+#[derive(Template)]
+#[template(path = "connect_github.html")]
+struct ConnectGitHubTemplate {
+    static_hash: &'static str,
+    user: Option<User>,
+}
+
+#[derive(Template)]
+#[template(path = "github_confirm.html")]
+struct GitHubConfirmTemplate<'a> {
+    github_login: &'a str,
+    static_hash: &'static str,
+    user: Option<User>,
+}
+
 #[derive(Deserialize)]
 pub struct LoginForm {
     invite_code: String,
@@ -56,7 +77,13 @@ pub fn router() -> Router<AppState> {
         .route("/login", get(login_page))
         .route("/login", post(login_submit))
         .route("/auth/github", get(github_login_start))
+        .route("/auth/connect", get(connect_github_page))
+        .route("/auth/github/connect", post(github_link_start))
         .route("/auth/github/callback", get(github_callback))
+        .route(
+            "/auth/github/confirm",
+            get(github_confirm_page).post(github_confirm_submit),
+        )
         .route("/logout", post(logout))
 }
 
@@ -75,16 +102,19 @@ async fn login_submit(
     session: Session,
     Form(form): Form<LoginForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    let user: Option<User> = sqlx::query_as("SELECT * FROM users WHERE invite_code = ?")
-        .bind(&form.invite_code)
-        .fetch_optional(&state.db)
-        .await?;
+    let user: Option<User> =
+        sqlx::query_as("SELECT * FROM users WHERE invite_code = ? AND github_user_id IS NULL")
+            .bind(&form.invite_code)
+            .fetch_optional(&state.db)
+            .await?;
 
     match user {
         Some(user) => {
+            session.flush().await?;
             session.cycle_id().await?;
-            login_user(&session, &user).await?;
-            Ok(Redirect::to("/").into_response())
+            let migration = MigrationSession::new(user.id, chrono::Utc::now());
+            store_migration_session(&session, &migration).await?;
+            Ok(Redirect::to("/auth/connect").into_response())
         }
         None => {
             let template = LoginTemplate {
@@ -96,6 +126,49 @@ async fn login_submit(
             Ok(Html(template.render()?).into_response())
         }
     }
+}
+
+async fn connect_github_page(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<impl IntoResponse, AppError> {
+    let Some(_) = live_migration_session(&state, &session).await? else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+
+    let template = ConnectGitHubTemplate {
+        static_hash: crate::STATIC_HASH,
+        user: None,
+    };
+    Ok(Html(template.render()?).into_response())
+}
+
+async fn github_link_start(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<impl IntoResponse, AppError> {
+    let Some(migration) = live_migration_session(&state, &session).await? else {
+        return Ok(Redirect::to("/login").into_response());
+    };
+
+    let attempt = OAuthAttempt::new(
+        OAuthPurpose::Link {
+            user_id: migration.user_id,
+        },
+        chrono::Utc::now(),
+    );
+    store_oauth_attempt(&session, &attempt).await?;
+    let callback_url = github_callback_url(&state);
+    let authorization_url = match state.auth.github.authorization_url(
+        &callback_url,
+        &attempt.state,
+        &attempt.pkce_challenge(),
+    ) {
+        Ok(url) => url,
+        Err(_) => return render_auth_error(GITHUB_LINK_ERROR),
+    };
+
+    Ok(Redirect::to(authorization_url.as_str()).into_response())
 }
 
 async fn github_login_start(
@@ -125,21 +198,32 @@ async fn github_callback(
     let Some(attempt) = take_oauth_attempt(&session).await? else {
         return render_auth_error(GITHUB_SIGN_IN_ERROR);
     };
+    let callback_error = match &attempt.purpose {
+        OAuthPurpose::Login => GITHUB_SIGN_IN_ERROR,
+        OAuthPurpose::Link { .. } => GITHUB_LINK_ERROR,
+    };
     let Some(query) = parse_github_callback_query(raw_query.as_deref()) else {
-        return render_auth_error(GITHUB_SIGN_IN_ERROR);
+        return render_auth_error(callback_error);
     };
     if query.provider_error {
-        return render_auth_error(GITHUB_SIGN_IN_ERROR);
+        return render_auth_error(callback_error);
     }
     let (Some(code), Some(callback_state)) = (query.code.as_deref(), query.state.as_deref()) else {
-        return render_auth_error(GITHUB_SIGN_IN_ERROR);
+        return render_auth_error(callback_error);
     };
-    let is_valid_attempt = attempt.purpose == OAuthPurpose::Login
-        && !code.is_empty()
+    let is_valid_attempt = !code.is_empty()
         && attempt.state == callback_state
         && attempt.expires_at > chrono::Utc::now().timestamp();
     if !is_valid_attempt {
-        return render_auth_error(GITHUB_SIGN_IN_ERROR);
+        return render_auth_error(callback_error);
+    }
+    if let OAuthPurpose::Link { user_id } = &attempt.purpose {
+        let Some(migration) = live_migration_session(&state, &session).await? else {
+            return render_auth_error(callback_error);
+        };
+        if migration.user_id != *user_id {
+            return render_auth_error(callback_error);
+        }
     }
 
     let profile = match state
@@ -149,9 +233,36 @@ async fn github_callback(
         .await
     {
         Ok(profile) => profile,
-        Err(_) => return render_auth_error(GITHUB_SIGN_IN_ERROR),
+        Err(_) => return render_auth_error(callback_error),
     };
 
+    match attempt.purpose {
+        OAuthPurpose::Login => complete_github_login(&state, &session, profile).await,
+        OAuthPurpose::Link { user_id } => {
+            let Some(migration) = live_migration_session(&state, &session).await? else {
+                return render_auth_error(GITHUB_LINK_ERROR);
+            };
+            if migration.user_id != user_id {
+                return render_auth_error(GITHUB_LINK_ERROR);
+            }
+
+            let pending = PendingConnection::new(
+                user_id,
+                profile,
+                ConnectionProof::LegacyInvite,
+                chrono::Utc::now(),
+            );
+            store_pending_connection(&session, &pending).await?;
+            Ok(Redirect::to("/auth/github/confirm").into_response())
+        }
+    }
+}
+
+async fn complete_github_login(
+    state: &AppState,
+    session: &Session,
+    profile: crate::github::GitHubProfile,
+) -> Result<axum::response::Response, AppError> {
     let now = chrono::Utc::now().to_rfc3339();
     sqlx::query("UPDATE users SET github_login = ?, updated_at = ? WHERE github_user_id = ?")
         .bind(&profile.login)
@@ -200,9 +311,157 @@ async fn github_callback(
     let Some(user) = user else {
         return render_auth_error(GITHUB_SIGN_IN_ERROR);
     };
+    session.flush().await?;
+    session.cycle_id().await?;
+    login_user(session, &user).await?;
+    Ok(Redirect::to("/").into_response())
+}
+
+async fn github_confirm_page(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<impl IntoResponse, AppError> {
+    let Some(pending) = live_pending_connection(&state, &session).await? else {
+        return render_auth_error(GITHUB_LINK_ERROR);
+    };
+
+    let template = GitHubConfirmTemplate {
+        github_login: &pending.github_profile.login,
+        static_hash: crate::STATIC_HASH,
+        user: None,
+    };
+    Ok(Html(template.render()?).into_response())
+}
+
+async fn github_confirm_submit(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<impl IntoResponse, AppError> {
+    let Some(pending) = take_pending_connection(&session).await? else {
+        return render_auth_error(GITHUB_LINK_ERROR);
+    };
+    if pending.expires_at <= chrono::Utc::now().timestamp()
+        || !pending_matches_live_migration(&state, &session, &pending).await?
+    {
+        return render_auth_error(GITHUB_LINK_ERROR);
+    }
+    match &pending.proof {
+        ConnectionProof::LegacyInvite => {}
+    }
+
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut transaction = state.db.begin().await?;
+    let update_result = sqlx::query(
+        "UPDATE users \
+         SET github_user_id = ?, \
+             github_login = ?, \
+             invite_code = NULL, \
+             auth_version = auth_version + 1, \
+             updated_at = ? \
+         WHERE id = ? \
+           AND invite_code IS NOT NULL \
+           AND github_user_id IS NULL",
+    )
+    .bind(&pending.github_profile.user_id)
+    .bind(&pending.github_profile.login)
+    .bind(&now)
+    .bind(&pending.user_id)
+    .execute(&mut *transaction)
+    .await;
+
+    let update = match update_result {
+        Ok(update) => update,
+        Err(error) if is_unique_violation(&error) => {
+            return render_auth_error(GITHUB_IDENTITY_IN_USE_ERROR);
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if update.rows_affected() != 1 {
+        return render_auth_error(GITHUB_LINK_ERROR);
+    }
+
+    sqlx::query(
+        "UPDATE auth_connection_tokens \
+         SET consumed_at = ? \
+         WHERE user_id = ? \
+           AND consumed_at IS NULL \
+           AND expires_at > ?",
+    )
+    .bind(&now)
+    .bind(&pending.user_id)
+    .bind(&now)
+    .execute(&mut *transaction)
+    .await?;
+    transaction.commit().await?;
+
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        .bind(&pending.user_id)
+        .fetch_one(&state.db)
+        .await?;
+    session.flush().await?;
     session.cycle_id().await?;
     login_user(&session, &user).await?;
     Ok(Redirect::to("/").into_response())
+}
+
+async fn live_migration_session(
+    state: &AppState,
+    session: &Session,
+) -> Result<Option<MigrationSession>, AppError> {
+    let Some(migration) = get_migration_session(session).await? else {
+        return Ok(None);
+    };
+    let user_is_linkable: i64 = sqlx::query_scalar(
+        "SELECT EXISTS(\
+             SELECT 1 FROM users \
+             WHERE id = ? AND invite_code IS NOT NULL AND github_user_id IS NULL\
+         )",
+    )
+    .bind(&migration.user_id)
+    .fetch_one(&state.db)
+    .await?;
+    if migration.expires_at <= chrono::Utc::now().timestamp() || user_is_linkable == 0 {
+        take_migration_session(session).await?;
+        return Ok(None);
+    }
+
+    Ok(Some(migration))
+}
+
+async fn live_pending_connection(
+    state: &AppState,
+    session: &Session,
+) -> Result<Option<PendingConnection>, AppError> {
+    let Some(pending) = get_pending_connection(session).await? else {
+        return Ok(None);
+    };
+    if pending.expires_at <= chrono::Utc::now().timestamp()
+        || !pending_matches_live_migration(state, session, &pending).await?
+    {
+        take_pending_connection(session).await?;
+        return Ok(None);
+    }
+
+    Ok(Some(pending))
+}
+
+async fn pending_matches_live_migration(
+    state: &AppState,
+    session: &Session,
+    pending: &PendingConnection,
+) -> Result<bool, AppError> {
+    match &pending.proof {
+        ConnectionProof::LegacyInvite => {
+            let migration = live_migration_session(state, session).await?;
+            Ok(migration.is_some_and(|migration| migration.user_id == pending.user_id))
+        }
+    }
+}
+
+fn is_unique_violation(error: &sqlx::Error) -> bool {
+    error
+        .as_database_error()
+        .is_some_and(|error| error.is_unique_violation())
 }
 
 fn parse_github_callback_query(raw_query: Option<&str>) -> Option<GitHubCallbackQuery> {

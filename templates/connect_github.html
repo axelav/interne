@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}Connect GitHub - Interne{% endblock %}
+
+{% block content %}
+<div class="login-page">
+    <h1 class="form-heading">Connect GitHub</h1>
+    <p>Your GitHub account will replace your legacy invite code for future sign-ins.</p>
+    <form method="post" action="/auth/github/connect" autocomplete="off">
+        <button type="submit">Continue with GitHub</button>
+    </form>
+</div>
+{% endblock %}

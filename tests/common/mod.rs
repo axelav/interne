@@ -211,6 +211,39 @@ impl TestApp {
         (session_cookie, authorization_url)
     }
 
+    pub async fn legacy_login(&self, invite_code: &str) -> String {
+        let response = self
+            .post_form("/login", &format!("invite_code={invite_code}"), None)
+            .await;
+        assert_redirect(&response, "/auth/connect");
+        cookie_from_response(
+            response
+                .headers()
+                .get("set-cookie")
+                .expect("Legacy login should establish a migration session"),
+        )
+    }
+
+    pub async fn begin_github_link(&self, cookie: &str) -> Url {
+        let response = self
+            .post_form("/auth/github/connect", "", Some(cookie))
+            .await;
+        assert!(
+            response.status().is_redirection(),
+            "GitHub link start should redirect, got {}",
+            response.status()
+        );
+        Url::parse(
+            response
+                .headers()
+                .get("location")
+                .expect("GitHub link start should have a Location header")
+                .to_str()
+                .unwrap(),
+        )
+        .expect("GitHub authorization redirect should be a valid URL")
+    }
+
     pub async fn github_callback_response(
         &self,
         github_user_id: &str,
@@ -271,6 +304,40 @@ impl TestApp {
     }
 
     pub async fn expire_oauth_attempt(&self, cookie: &str) {
+        self.expire_session_value(cookie, "oauth_attempt").await;
+    }
+
+    pub async fn expire_migration_session(&self, cookie: &str) {
+        self.expire_session_value(cookie, "migration_session").await;
+    }
+
+    pub async fn expire_pending_connection(&self, cookie: &str) {
+        self.expire_session_value(cookie, "pending_connection")
+            .await;
+    }
+
+    pub async fn retarget_migration_session(&self, cookie: &str, user_id: &str) {
+        let (_, encoded_id) = cookie
+            .split_once('=')
+            .expect("Session cookie should contain an ID");
+        let session_id =
+            Id::from_str(encoded_id).expect("Session cookie should contain a valid ID");
+        let store = SqliteStore::new(self.db.clone());
+        let mut record = store
+            .load(&session_id)
+            .await
+            .expect("Session should load")
+            .expect("Migration session should exist");
+        record
+            .data
+            .get_mut("migration_session")
+            .and_then(serde_json::Value::as_object_mut)
+            .expect("Migration session should be stored in the session")
+            .insert("user_id".into(), serde_json::json!(user_id));
+        store.save(&record).await.expect("Session should save");
+    }
+
+    async fn expire_session_value(&self, cookie: &str, key: &str) {
         let (_, encoded_id) = cookie
             .split_once('=')
             .expect("Session cookie should contain an ID");
@@ -284,9 +351,9 @@ impl TestApp {
             .expect("OAuth session should exist");
         record
             .data
-            .get_mut("oauth_attempt")
+            .get_mut(key)
             .and_then(serde_json::Value::as_object_mut)
-            .expect("OAuth attempt should be stored in the session")
+            .expect("Expiring session value should be stored in the session")
             .insert("expires_at".into(), serde_json::json!(0));
         store.save(&record).await.expect("Session should save");
     }
@@ -325,7 +392,7 @@ impl TestApp {
     }
 }
 
-fn cookie_from_response(value: &axum::http::HeaderValue) -> String {
+pub fn cookie_from_response(value: &axum::http::HeaderValue) -> String {
     value
         .to_str()
         .unwrap()
