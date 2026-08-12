@@ -127,11 +127,14 @@ async fn link_confirmation_rejects_github_id_owned_by_another_user() {
     )
     .await;
 
-    let response = app
-        .post_form("/auth/github/confirm", "", Some(&cookie))
-        .await;
+    let (response, logs) =
+        capture_error_logs(app.post_form("/auth/github/confirm", "", Some(&cookie))).await;
     let body = callback_body(response).await;
     assert!(body.contains("already connected"));
+    assert!(
+        logs.is_empty(),
+        "duplicate identity is not an operational failure"
+    );
     assert!(!body.contains(&owner_id));
     assert!(!body.contains(&legacy_user_id));
 
@@ -143,6 +146,65 @@ async fn link_confirmation_rejects_github_id_owned_by_another_user() {
             .unwrap();
     assert_eq!(legacy_state.0, None);
     assert_eq!(legacy_state.1.as_deref(), Some(invite_code.as_str()));
+}
+
+#[tokio::test]
+async fn legacy_confirmation_database_failure_logs_only_safe_operation_context() {
+    let app = TestApp::new().await;
+    let (user_id, invite_code) = app.create_legacy_user("Legacy Secret").await;
+    let oauth_code = "secret-legacy-oauth-code";
+    let github_user_id = "secret-legacy-github-id";
+    let github_login = "secret-legacy-login";
+    let cookie = prepare_legacy_pending_connection(
+        &app,
+        &invite_code,
+        oauth_code,
+        github_user_id,
+        github_login,
+    )
+    .await;
+    let hostile_error = "hostile-legacy-trigger-secret";
+    sqlx::query(
+        "CREATE TRIGGER reject_legacy_github_link BEFORE UPDATE OF github_user_id ON users \
+         BEGIN SELECT RAISE(ABORT, 'hostile-legacy-trigger-secret'); END",
+    )
+    .execute(&app.db)
+    .await
+    .unwrap();
+
+    let (response, logs) =
+        capture_error_logs(app.post_form("/auth/github/confirm", "", Some(&cookie))).await;
+    let status = response.status();
+    let body = body_string(response).await;
+
+    assert!(!logs.contains(hostile_error));
+    for secret in [
+        oauth_code,
+        github_user_id,
+        github_login,
+        invite_code.as_str(),
+        user_id.as_str(),
+        "UPDATE users",
+        "reject_legacy_github_link",
+    ] {
+        assert!(!logs.contains(secret), "secret leaked to logs: {secret}");
+        assert!(
+            !body.contains(secret),
+            "secret leaked to response: {secret}"
+        );
+    }
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.contains("couldn’t connect this GitHub account"));
+    assert!(logs.contains("legacy GitHub connection database operation failed"));
+
+    let state: (Option<String>, Option<String>, String, i64) = sqlx::query_as(
+        "SELECT github_user_id, github_login, invite_code, auth_version FROM users WHERE id = ?",
+    )
+    .bind(user_id)
+    .fetch_one(&app.db)
+    .await
+    .unwrap();
+    assert_eq!(state, (None, None, invite_code, 1));
 }
 
 #[tokio::test]

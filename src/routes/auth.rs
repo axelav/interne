@@ -472,7 +472,13 @@ async fn github_confirm_submit(
             Err(ConnectionTokenError::InvalidToken | ConnectionTokenError::UserNotFound) => {
                 return render_auth_error(GITHUB_LINK_ERROR);
             }
-            Err(ConnectionTokenError::Database(error)) => return Err(error.into()),
+            Err(error @ ConnectionTokenError::Database(_)) => {
+                log_connection_token_failure(
+                    "legacy GitHub connection database operation failed",
+                    &error,
+                );
+                return render_auth_error(GITHUB_LINK_ERROR);
+            }
         },
         ConnectionProof::Token { token_id, purpose } => {
             let claim = ConnectionClaim {
