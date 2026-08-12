@@ -34,14 +34,56 @@ async fn main() {
                 return;
             }
             "create-user" => {
-                if args.len() < 3 {
+                if !(3..=4).contains(&args.len()) {
                     eprintln!("Usage: interne create-user <name> [email]");
                     std::process::exit(1);
                 }
-                let email = args.get(3).map(|s| s.as_str());
-                if let Err(e) = interne::cli::create_user(&pool, &args[2], email).await {
-                    eprintln!("Failed to create user: {}", e);
+                eprintln!(
+                    "Warning: create-user is deprecated and will be removed; email is ignored."
+                );
+                let public_base_url = connection_base_url_or_exit();
+                match interne::cli::invite_user(&pool, &args[2], &public_base_url).await {
+                    Ok((user_id, url)) => {
+                        println!("User ID: {user_id}");
+                        println!("Invitation URL: {url}");
+                    }
+                    Err(error) => {
+                        eprintln!("Failed to invite user: {error}");
+                        std::process::exit(1);
+                    }
+                }
+                return;
+            }
+            "invite-user" => {
+                if args.len() != 3 {
+                    eprintln!("Usage: interne invite-user <name>");
                     std::process::exit(1);
+                }
+                let public_base_url = connection_base_url_or_exit();
+                match interne::cli::invite_user(&pool, &args[2], &public_base_url).await {
+                    Ok((user_id, url)) => {
+                        println!("User ID: {user_id}");
+                        println!("Invitation URL: {url}");
+                    }
+                    Err(error) => {
+                        eprintln!("Failed to invite user: {error}");
+                        std::process::exit(1);
+                    }
+                }
+                return;
+            }
+            "reset-auth" => {
+                if args.len() != 3 {
+                    eprintln!("Usage: interne reset-auth <user-id>");
+                    std::process::exit(1);
+                }
+                let public_base_url = connection_base_url_or_exit();
+                match interne::cli::reset_user_auth(&pool, &args[2], &public_base_url).await {
+                    Ok(url) => println!("Recovery URL: {url}"),
+                    Err(error) => {
+                        eprintln!("Failed to reset user authentication: {error}");
+                        std::process::exit(1);
+                    }
                 }
                 return;
             }
@@ -52,9 +94,15 @@ async fn main() {
                 println!();
                 println!("Commands:");
                 println!("  (none)              Start the web server");
-                println!("  create-user <name>  Create a new user");
-                println!("  import <file> <id>  Import legacy JSON data");
-                println!("  help                Show this help");
+                println!(
+                    "  invite-user <name>       Create an invitation URL (expires in four hours)"
+                );
+                println!(
+                    "  reset-auth <user-id>     Reset auth and create a recovery URL (expires in four hours)"
+                );
+                println!("  create-user <name> [email]  Deprecated alias for invite-user");
+                println!("  import <file> <id>       Import legacy JSON data");
+                println!("  help                     Show this help");
                 return;
             }
             cmd => {
@@ -91,4 +139,13 @@ async fn main() {
 
     tracing::info!("listening on {}", addr);
     axum::serve(listener, app).await.unwrap();
+}
+
+fn connection_base_url_or_exit() -> url::Url {
+    interne::cli::connection_base_url_from_lookup(|key| env::var(key).ok()).unwrap_or_else(
+        |error| {
+            eprintln!("Authentication configuration error: {error}");
+            std::process::exit(1);
+        },
+    )
 }
