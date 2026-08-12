@@ -12,7 +12,7 @@ pub const STATIC_HASH: &str = env!("STATIC_HASH");
 
 use std::sync::Arc;
 
-use axum::http::{HeaderValue, header};
+use axum::http::{HeaderValue, Request, Uri, header};
 use axum::{Router, routing::get};
 use sqlx::SqlitePool;
 use time::Duration;
@@ -43,6 +43,10 @@ pub struct AppState {
 
 async fn health() -> &'static str {
     "ok"
+}
+
+fn trace_path(uri: &Uri) -> &str {
+    uri.path()
 }
 
 /// Build the full Axum application router.
@@ -82,10 +86,35 @@ pub async fn build_app(pool: SqlitePool, secure_cookies: bool, auth: AuthService
                 .service(ServeDir::new("static")),
         )
         .layer(session_layer)
+        .layer(SetResponseHeaderLayer::overriding(
+            header::REFERRER_POLICY,
+            HeaderValue::from_static("no-referrer"),
+        ))
         .layer(
             TraceLayer::new_for_http()
+                .make_span_with(|request: &Request<_>| {
+                    tracing::info_span!(
+                        "http_request",
+                        method = %request.method(),
+                        path = %trace_path(request.uri()),
+                    )
+                })
                 .on_request(DefaultOnRequest::new().level(Level::INFO))
                 .on_response(DefaultOnResponse::new().level(Level::INFO)),
         )
         .with_state(state)
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::Uri;
+
+    use super::trace_path;
+
+    #[test]
+    fn request_log_path_excludes_recovery_query_string() {
+        let uri: Uri = "/recover?token=secret".parse().unwrap();
+
+        assert_eq!(trace_path(&uri), "/recover");
+    }
 }

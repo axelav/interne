@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 use tower_sessions::Session;
 
 use crate::AppState;
+use crate::connection_tokens::{ConnectionClaim, ConnectionPurpose};
 use crate::github::GitHubProfile;
 use crate::models::User;
 
@@ -18,11 +19,19 @@ const AUTH_VERSION_KEY: &str = "auth_version";
 const OAUTH_ATTEMPT_KEY: &str = "oauth_attempt";
 const MIGRATION_SESSION_KEY: &str = "migration_session";
 const PENDING_CONNECTION_KEY: &str = "pending_connection";
+const CONNECTION_CLAIM_KEY: &str = "connection_claim";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum OAuthPurpose {
     Login,
-    Link { user_id: String },
+    Link {
+        user_id: String,
+    },
+    ConnectionToken {
+        token_id: String,
+        user_id: String,
+        purpose: ConnectionPurpose,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -51,6 +60,10 @@ impl MigrationSession {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum ConnectionProof {
     LegacyInvite,
+    Token {
+        token_id: String,
+        purpose: ConnectionPurpose,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -144,6 +157,28 @@ pub async fn store_pending_connection(
     session.insert(PENDING_CONNECTION_KEY, pending).await
 }
 
+pub async fn store_connection_claim(
+    session: &Session,
+    claim: &ConnectionClaim,
+) -> Result<(), tower_sessions::session::Error> {
+    session.remove::<String>(USER_ID_KEY).await?;
+    session.remove::<i64>(AUTH_VERSION_KEY).await?;
+    session
+        .remove::<MigrationSession>(MIGRATION_SESSION_KEY)
+        .await?;
+    session
+        .remove::<PendingConnection>(PENDING_CONNECTION_KEY)
+        .await?;
+    session.remove::<OAuthAttempt>(OAUTH_ATTEMPT_KEY).await?;
+    session.insert(CONNECTION_CLAIM_KEY, claim).await
+}
+
+pub async fn take_connection_claim(
+    session: &Session,
+) -> Result<Option<ConnectionClaim>, tower_sessions::session::Error> {
+    session.remove(CONNECTION_CLAIM_KEY).await
+}
+
 pub async fn get_pending_connection(
     session: &Session,
 ) -> Result<Option<PendingConnection>, tower_sessions::session::Error> {
@@ -221,6 +256,9 @@ pub async fn login_user(
         .await?;
     session
         .remove::<PendingConnection>(PENDING_CONNECTION_KEY)
+        .await?;
+    session
+        .remove::<ConnectionClaim>(CONNECTION_CLAIM_KEY)
         .await?;
     session.insert(USER_ID_KEY, &user.id).await?;
     session.insert(AUTH_VERSION_KEY, user.auth_version).await

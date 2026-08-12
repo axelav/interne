@@ -3,16 +3,20 @@ use std::fmt;
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use rand::RngCore;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{Sqlite, SqlitePool, Transaction};
 use url::Url;
 use uuid::Uuid;
 
+use crate::github::GitHubProfile;
+use crate::models::User;
+
 const TOKEN_BYTES: usize = 32;
 const TOKEN_LENGTH: usize = 43;
 const TOKEN_LIFETIME_HOURS: i64 = 4;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ConnectionPurpose {
     Invite,
     Recovery,
@@ -41,7 +45,7 @@ pub struct IssuedConnection {
     pub expires_at: DateTime<Utc>,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConnectionClaim {
     pub token_id: String,
     pub user_id: String,
@@ -50,6 +54,7 @@ pub struct ConnectionClaim {
 
 pub enum ConnectionTokenError {
     InvalidToken,
+    GitHubIdentityInUse,
     UserNotFound,
     Database(sqlx::Error),
 }
@@ -58,6 +63,7 @@ impl fmt::Debug for ConnectionTokenError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidToken => formatter.write_str("InvalidToken"),
+            Self::GitHubIdentityInUse => formatter.write_str("GitHubIdentityInUse"),
             Self::UserNotFound => formatter.write_str("UserNotFound"),
             Self::Database(_) => formatter.write_str("Database"),
         }
@@ -68,6 +74,9 @@ impl fmt::Display for ConnectionTokenError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidToken => formatter.write_str("connection link is invalid or expired"),
+            Self::GitHubIdentityInUse => {
+                formatter.write_str("GitHub identity is already connected")
+            }
             Self::UserNotFound => formatter.write_str("user not found"),
             Self::Database(_) => formatter.write_str("connection token database operation failed"),
         }
@@ -78,7 +87,7 @@ impl std::error::Error for ConnectionTokenError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Database(error) => Some(error),
-            Self::InvalidToken | Self::UserNotFound => None,
+            Self::GitHubIdentityInUse | Self::InvalidToken | Self::UserNotFound => None,
         }
     }
 }
@@ -173,6 +182,106 @@ pub async fn validate_token(
     })
 }
 
+pub async fn validate_claim(
+    pool: &SqlitePool,
+    claim: &ConnectionClaim,
+    now: DateTime<Utc>,
+) -> Result<(), ConnectionTokenError> {
+    let is_active: i64 = sqlx::query_scalar(
+        "SELECT EXISTS(\
+             SELECT 1 FROM auth_connection_tokens \
+             WHERE id = ? AND user_id = ? AND purpose = ? \
+               AND consumed_at IS NULL AND expires_at > ?\
+         )",
+    )
+    .bind(&claim.token_id)
+    .bind(&claim.user_id)
+    .bind(claim.purpose.as_str())
+    .bind(database_timestamp(now))
+    .fetch_one(pool)
+    .await?;
+
+    if is_active == 1 {
+        Ok(())
+    } else {
+        Err(ConnectionTokenError::InvalidToken)
+    }
+}
+
+pub async fn consume_and_link(
+    pool: &SqlitePool,
+    claim: &ConnectionClaim,
+    profile: &GitHubProfile,
+    now: DateTime<Utc>,
+) -> Result<User, ConnectionTokenError> {
+    let now_text = database_timestamp(now);
+    let mut transaction = pool.begin().await?;
+
+    let target_token = sqlx::query(
+        "UPDATE auth_connection_tokens SET consumed_at = ? \
+         WHERE id = ? AND user_id = ? AND purpose = ? \
+           AND consumed_at IS NULL AND expires_at > ?",
+    )
+    .bind(&now_text)
+    .bind(&claim.token_id)
+    .bind(&claim.user_id)
+    .bind(claim.purpose.as_str())
+    .bind(&now_text)
+    .execute(&mut *transaction)
+    .await?;
+    if target_token.rows_affected() != 1 {
+        return Err(ConnectionTokenError::InvalidToken);
+    }
+
+    let owner: Option<String> = sqlx::query_scalar("SELECT id FROM users WHERE github_user_id = ?")
+        .bind(&profile.user_id)
+        .fetch_optional(&mut *transaction)
+        .await?;
+    if owner.is_some_and(|owner_id| owner_id != claim.user_id) {
+        return Err(ConnectionTokenError::GitHubIdentityInUse);
+    }
+
+    let user_update = sqlx::query(
+        "UPDATE users \
+         SET github_user_id = ?, github_login = ?, invite_code = NULL, \
+             auth_version = auth_version + 1, updated_at = ? \
+         WHERE id = ? AND github_user_id IS NULL",
+    )
+    .bind(&profile.user_id)
+    .bind(&profile.login)
+    .bind(&now_text)
+    .bind(&claim.user_id)
+    .execute(&mut *transaction)
+    .await;
+    let user_update = match user_update {
+        Ok(update) => update,
+        Err(error) if is_unique_violation(&error) => {
+            return Err(ConnectionTokenError::GitHubIdentityInUse);
+        }
+        Err(error) => return Err(error.into()),
+    };
+    if user_update.rows_affected() != 1 {
+        return Err(ConnectionTokenError::InvalidToken);
+    }
+
+    sqlx::query(
+        "UPDATE auth_connection_tokens SET consumed_at = ? \
+         WHERE user_id = ? AND consumed_at IS NULL AND expires_at > ?",
+    )
+    .bind(&now_text)
+    .bind(&claim.user_id)
+    .bind(&now_text)
+    .execute(&mut *transaction)
+    .await?;
+
+    let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
+        .bind(&claim.user_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+    transaction.commit().await?;
+    Ok(user)
+}
+
 pub fn connection_url(base: &Url, plaintext: &str) -> Url {
     let mut url = base.clone();
     url.set_path("/recover");
@@ -228,6 +337,12 @@ async fn issue_token(
 
 fn hash_token(plaintext: &str) -> String {
     URL_SAFE_NO_PAD.encode(Sha256::digest(plaintext.as_bytes()))
+}
+
+fn is_unique_violation(error: &sqlx::Error) -> bool {
+    error
+        .as_database_error()
+        .is_some_and(|error| error.is_unique_violation())
 }
 
 pub(crate) fn database_timestamp(timestamp: DateTime<Utc>) -> String {

@@ -7,7 +7,7 @@
     <h1 class="form-heading">Confirm GitHub account</h1>
     <p>Connect Interne to <strong>{{ github_login }}</strong>?</p>
     <form method="post" action="/auth/github/confirm" autocomplete="off">
-        <button type="submit">Connect GitHub</button>
+        <button type="submit">{{ action_label }}</button>
     </form>
 </div>
 {% endblock %}

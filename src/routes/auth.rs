@@ -13,11 +13,15 @@ use tower_sessions::Session;
 use crate::AppState;
 use crate::auth::{
     ConnectionProof, MigrationSession, OAuthAttempt, OAuthPurpose, PendingConnection,
-    get_migration_session, get_pending_connection, login_user, logout_user,
-    store_migration_session, store_oauth_attempt, store_pending_connection, take_migration_session,
-    take_oauth_attempt, take_pending_connection,
+    get_migration_session, get_pending_connection, login_user, logout_user, store_connection_claim,
+    store_migration_session, store_oauth_attempt, store_pending_connection, take_connection_claim,
+    take_migration_session, take_oauth_attempt, take_pending_connection,
 };
 use crate::config::SignupMode;
+use crate::connection_tokens::{
+    ConnectionClaim, ConnectionPurpose, ConnectionTokenError, consume_and_link, validate_claim,
+    validate_token,
+};
 use crate::error::AppError;
 use crate::models::User;
 
@@ -26,6 +30,8 @@ const GITHUB_SIGN_IN_ERROR: &str =
 const GITHUB_LINK_ERROR: &str =
     "We couldn’t connect this GitHub account. Please return to login and try again.";
 const GITHUB_IDENTITY_IN_USE_ERROR: &str = "That GitHub account is already connected to another Interne account. Please return to login and try another account.";
+const CONNECTION_TOKEN_ERROR: &str =
+    "This invitation or recovery link is invalid or expired. Please request a new link.";
 const CLOSED_SIGNUP_ERROR: &str =
     "Access isn’t open yet. Email webmaster@honkytonk.in for an invite.";
 
@@ -57,6 +63,7 @@ struct ConnectGitHubTemplate {
 #[template(path = "github_confirm.html")]
 struct GitHubConfirmTemplate<'a> {
     github_login: &'a str,
+    action_label: &'a str,
     static_hash: &'static str,
     user: Option<User>,
 }
@@ -74,9 +81,11 @@ struct GitHubCallbackQuery {
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/recover", get(recovery_entry))
         .route("/login", get(login_page))
         .route("/login", post(login_submit))
         .route("/auth/github", get(github_login_start))
+        .route("/auth/github/recover", get(github_recovery_start))
         .route("/auth/connect", get(connect_github_page))
         .route("/auth/github/connect", post(github_link_start))
         .route("/auth/github/callback", get(github_callback))
@@ -85,6 +94,58 @@ pub fn router() -> Router<AppState> {
             get(github_confirm_page).post(github_confirm_submit),
         )
         .route("/logout", post(logout))
+}
+
+async fn recovery_entry(
+    State(state): State<AppState>,
+    session: Session,
+    RawQuery(raw_query): RawQuery,
+) -> Result<impl IntoResponse, AppError> {
+    let Some(plaintext_token) = parse_recovery_token(raw_query.as_deref()) else {
+        return render_auth_error(CONNECTION_TOKEN_ERROR);
+    };
+    let claim = match validate_token(&state.db, &plaintext_token, chrono::Utc::now()).await {
+        Ok(claim) => claim,
+        Err(_) => return render_auth_error(CONNECTION_TOKEN_ERROR),
+    };
+    store_connection_claim(&session, &claim).await?;
+    Ok(Redirect::to("/auth/github/recover").into_response())
+}
+
+async fn github_recovery_start(
+    State(state): State<AppState>,
+    session: Session,
+) -> Result<impl IntoResponse, AppError> {
+    let Some(claim) = take_connection_claim(&session).await? else {
+        return render_auth_error(CONNECTION_TOKEN_ERROR);
+    };
+    if validate_claim(&state.db, &claim, chrono::Utc::now())
+        .await
+        .is_err()
+    {
+        return render_auth_error(CONNECTION_TOKEN_ERROR);
+    }
+
+    let attempt = OAuthAttempt::new(
+        OAuthPurpose::ConnectionToken {
+            token_id: claim.token_id,
+            user_id: claim.user_id,
+            purpose: claim.purpose,
+        },
+        chrono::Utc::now(),
+    );
+    store_oauth_attempt(&session, &attempt).await?;
+    let callback_url = github_callback_url(&state);
+    let authorization_url = match state.auth.github.authorization_url(
+        &callback_url,
+        &attempt.state,
+        &attempt.pkce_challenge(),
+    ) {
+        Ok(url) => url,
+        Err(_) => return render_auth_error(CONNECTION_TOKEN_ERROR),
+    };
+
+    Ok(Redirect::to(authorization_url.as_str()).into_response())
 }
 
 async fn login_page(State(state): State<AppState>) -> Result<impl IntoResponse, AppError> {
@@ -201,6 +262,7 @@ async fn github_callback(
     let callback_error = match &attempt.purpose {
         OAuthPurpose::Login => GITHUB_SIGN_IN_ERROR,
         OAuthPurpose::Link { .. } => GITHUB_LINK_ERROR,
+        OAuthPurpose::ConnectionToken { .. } => CONNECTION_TOKEN_ERROR,
     };
     let Some(query) = parse_github_callback_query(raw_query.as_deref()) else {
         return render_auth_error(callback_error);
@@ -222,6 +284,24 @@ async fn github_callback(
             return render_auth_error(callback_error);
         };
         if migration.user_id != *user_id {
+            return render_auth_error(callback_error);
+        }
+    }
+    if let OAuthPurpose::ConnectionToken {
+        token_id,
+        user_id,
+        purpose,
+    } = &attempt.purpose
+    {
+        let claim = ConnectionClaim {
+            token_id: token_id.clone(),
+            user_id: user_id.clone(),
+            purpose: *purpose,
+        };
+        if validate_claim(&state.db, &claim, chrono::Utc::now())
+            .await
+            .is_err()
+        {
             return render_auth_error(callback_error);
         }
     }
@@ -250,6 +330,20 @@ async fn github_callback(
                 user_id,
                 profile,
                 ConnectionProof::LegacyInvite,
+                chrono::Utc::now(),
+            );
+            store_pending_connection(&session, &pending).await?;
+            Ok(Redirect::to("/auth/github/confirm").into_response())
+        }
+        OAuthPurpose::ConnectionToken {
+            token_id,
+            user_id,
+            purpose,
+        } => {
+            let pending = PendingConnection::new(
+                user_id,
+                profile,
+                ConnectionProof::Token { token_id, purpose },
                 chrono::Utc::now(),
             );
             store_pending_connection(&session, &pending).await?;
@@ -321,12 +415,19 @@ async fn github_confirm_page(
     State(state): State<AppState>,
     session: Session,
 ) -> Result<impl IntoResponse, AppError> {
-    let Some(pending) = live_pending_connection(&state, &session).await? else {
+    let Some(pending) = get_pending_connection(&session).await? else {
         return render_auth_error(GITHUB_LINK_ERROR);
     };
+    if pending.expires_at <= chrono::Utc::now().timestamp()
+        || !pending_connection_is_live(&state, &session, &pending).await?
+    {
+        take_pending_connection(&session).await?;
+        return render_auth_error(connection_error(&pending.proof));
+    }
 
     let template = GitHubConfirmTemplate {
         github_login: &pending.github_profile.login,
+        action_label: confirmation_action(&pending.proof),
         static_hash: crate::STATIC_HASH,
         user: None,
     };
@@ -341,26 +442,60 @@ async fn github_confirm_submit(
         return render_auth_error(GITHUB_LINK_ERROR);
     };
     if pending.expires_at <= chrono::Utc::now().timestamp()
-        || !pending_matches_live_migration(&state, &session, &pending).await?
+        || !pending_connection_is_live(&state, &session, &pending).await?
     {
-        return render_auth_error(GITHUB_LINK_ERROR);
+        return render_auth_error(connection_error(&pending.proof));
     }
-    match &pending.proof {
-        ConnectionProof::LegacyInvite => {}
-    }
+    let user = match &pending.proof {
+        ConnectionProof::LegacyInvite => match complete_legacy_connection(&state, &pending).await {
+            Ok(user) => user,
+            Err(ConnectionTokenError::GitHubIdentityInUse) => {
+                return render_auth_error(GITHUB_IDENTITY_IN_USE_ERROR);
+            }
+            Err(ConnectionTokenError::InvalidToken | ConnectionTokenError::UserNotFound) => {
+                return render_auth_error(GITHUB_LINK_ERROR);
+            }
+            Err(ConnectionTokenError::Database(error)) => return Err(error.into()),
+        },
+        ConnectionProof::Token { token_id, purpose } => {
+            let claim = ConnectionClaim {
+                token_id: token_id.clone(),
+                user_id: pending.user_id.clone(),
+                purpose: *purpose,
+            };
+            match consume_and_link(
+                &state.db,
+                &claim,
+                &pending.github_profile,
+                chrono::Utc::now(),
+            )
+            .await
+            {
+                Ok(user) => user,
+                Err(ConnectionTokenError::GitHubIdentityInUse) => {
+                    return render_auth_error(GITHUB_IDENTITY_IN_USE_ERROR);
+                }
+                Err(_) => return render_auth_error(CONNECTION_TOKEN_ERROR),
+            }
+        }
+    };
+    session.flush().await?;
+    session.cycle_id().await?;
+    login_user(&session, &user).await?;
+    Ok(Redirect::to("/").into_response())
+}
 
+async fn complete_legacy_connection(
+    state: &AppState,
+    pending: &PendingConnection,
+) -> Result<User, ConnectionTokenError> {
     let now = crate::connection_tokens::database_timestamp(chrono::Utc::now());
     let mut transaction = state.db.begin().await?;
     let update_result = sqlx::query(
         "UPDATE users \
-         SET github_user_id = ?, \
-             github_login = ?, \
-             invite_code = NULL, \
-             auth_version = auth_version + 1, \
-             updated_at = ? \
-         WHERE id = ? \
-           AND invite_code IS NOT NULL \
-           AND github_user_id IS NULL",
+         SET github_user_id = ?, github_login = ?, invite_code = NULL, \
+             auth_version = auth_version + 1, updated_at = ? \
+         WHERE id = ? AND invite_code IS NOT NULL AND github_user_id IS NULL",
     )
     .bind(&pending.github_profile.user_id)
     .bind(&pending.github_profile.login)
@@ -372,36 +507,29 @@ async fn github_confirm_submit(
     let update = match update_result {
         Ok(update) => update,
         Err(error) if is_unique_violation(&error) => {
-            return render_auth_error(GITHUB_IDENTITY_IN_USE_ERROR);
+            return Err(ConnectionTokenError::GitHubIdentityInUse);
         }
         Err(error) => return Err(error.into()),
     };
     if update.rows_affected() != 1 {
-        return render_auth_error(GITHUB_LINK_ERROR);
+        return Err(ConnectionTokenError::InvalidToken);
     }
 
     sqlx::query(
-        "UPDATE auth_connection_tokens \
-         SET consumed_at = ? \
-         WHERE user_id = ? \
-           AND consumed_at IS NULL \
-           AND expires_at > ?",
+        "UPDATE auth_connection_tokens SET consumed_at = ? \
+         WHERE user_id = ? AND consumed_at IS NULL AND expires_at > ?",
     )
     .bind(&now)
     .bind(&pending.user_id)
     .bind(&now)
     .execute(&mut *transaction)
     .await?;
-    transaction.commit().await?;
-
     let user: User = sqlx::query_as("SELECT * FROM users WHERE id = ?")
         .bind(&pending.user_id)
-        .fetch_one(&state.db)
+        .fetch_one(&mut *transaction)
         .await?;
-    session.flush().await?;
-    session.cycle_id().await?;
-    login_user(&session, &user).await?;
-    Ok(Redirect::to("/").into_response())
+    transaction.commit().await?;
+    Ok(user)
 }
 
 async fn live_migration_session(
@@ -428,24 +556,7 @@ async fn live_migration_session(
     Ok(Some(migration))
 }
 
-async fn live_pending_connection(
-    state: &AppState,
-    session: &Session,
-) -> Result<Option<PendingConnection>, AppError> {
-    let Some(pending) = get_pending_connection(session).await? else {
-        return Ok(None);
-    };
-    if pending.expires_at <= chrono::Utc::now().timestamp()
-        || !pending_matches_live_migration(state, session, &pending).await?
-    {
-        take_pending_connection(session).await?;
-        return Ok(None);
-    }
-
-    Ok(Some(pending))
-}
-
-async fn pending_matches_live_migration(
+async fn pending_connection_is_live(
     state: &AppState,
     session: &Session,
     pending: &PendingConnection,
@@ -455,6 +566,37 @@ async fn pending_matches_live_migration(
             let migration = live_migration_session(state, session).await?;
             Ok(migration.is_some_and(|migration| migration.user_id == pending.user_id))
         }
+        ConnectionProof::Token { token_id, purpose } => {
+            let claim = ConnectionClaim {
+                token_id: token_id.clone(),
+                user_id: pending.user_id.clone(),
+                purpose: *purpose,
+            };
+            Ok(validate_claim(&state.db, &claim, chrono::Utc::now())
+                .await
+                .is_ok())
+        }
+    }
+}
+
+fn connection_error(proof: &ConnectionProof) -> &'static str {
+    match proof {
+        ConnectionProof::LegacyInvite => GITHUB_LINK_ERROR,
+        ConnectionProof::Token { .. } => CONNECTION_TOKEN_ERROR,
+    }
+}
+
+fn confirmation_action(proof: &ConnectionProof) -> &'static str {
+    match proof {
+        ConnectionProof::LegacyInvite => "Connect GitHub",
+        ConnectionProof::Token {
+            purpose: ConnectionPurpose::Invite,
+            ..
+        } => "Accept invitation",
+        ConnectionProof::Token {
+            purpose: ConnectionPurpose::Recovery,
+            ..
+        } => "Recover account",
     }
 }
 
@@ -511,6 +653,28 @@ fn has_valid_percent_encoding(value: &str) -> bool {
         }
     }
     true
+}
+
+fn parse_recovery_token(raw_query: Option<&str>) -> Option<String> {
+    let raw_query = raw_query?;
+    if !has_valid_percent_encoding(raw_query) {
+        return None;
+    }
+
+    let mut token = None;
+    let mut seen_keys = HashSet::new();
+    for (key, value) in url::form_urlencoded::parse(raw_query.as_bytes()) {
+        if key.contains('\u{fffd}')
+            || value.contains('\u{fffd}')
+            || !seen_keys.insert(key.to_string())
+        {
+            return None;
+        }
+        if key == "token" {
+            token = Some(value.into_owned());
+        }
+    }
+    token
 }
 
 async fn legacy_login_available(state: &AppState) -> Result<bool, AppError> {

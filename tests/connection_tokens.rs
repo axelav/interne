@@ -1,15 +1,472 @@
 mod common;
 
+use axum::http::{Response, StatusCode};
 use chrono::{Duration, SecondsFormat, TimeZone, Utc};
 use interne::connection_tokens::{
     ConnectionPurpose, ConnectionTokenError, connection_url, issue_invitation, reset_auth,
     validate_token,
 };
+use interne::github::GitHubProfile;
 use std::process::Command;
 use std::str::FromStr;
 use url::Url;
 
-use common::TestApp;
+use common::{TestApp, assert_redirect, body_string, cookie_from_response};
+
+fn query_parameter(url: &Url, name: &str) -> String {
+    url.query_pairs()
+        .find_map(|(key, value)| (key == name).then(|| value.into_owned()))
+        .unwrap_or_else(|| panic!("URL should contain {name}"))
+}
+
+fn callback_uri(code: &str, state: &str) -> String {
+    let mut url = Url::parse("https://interne.test/auth/github/callback").unwrap();
+    url.query_pairs_mut()
+        .append_pair("code", code)
+        .append_pair("state", state);
+    format!("{}?{}", url.path(), url.query().unwrap())
+}
+
+async fn begin_connection_oauth(
+    app: &TestApp,
+    plaintext_token: &str,
+) -> (String, Url, Response<axum::body::Body>) {
+    let entry = app
+        .get(&format!("/recover?token={plaintext_token}"), None)
+        .await;
+    assert_redirect(&entry, "/auth/github/recover");
+    assert_eq!(entry.headers()["referrer-policy"], "no-referrer");
+    assert!(
+        !entry.headers()["location"]
+            .to_str()
+            .unwrap()
+            .contains(plaintext_token)
+    );
+    let cookie = cookie_from_response(
+        entry
+            .headers()
+            .get("set-cookie")
+            .expect("Recovery entry should establish a claim session"),
+    );
+
+    let clean = app.get("/auth/github/recover", Some(&cookie)).await;
+    assert_eq!(clean.headers()["referrer-policy"], "no-referrer");
+    let authorization_url = Url::parse(
+        clean
+            .headers()
+            .get("location")
+            .expect("Clean recovery path should redirect to GitHub")
+            .to_str()
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(authorization_url.host_str(), Some("github.test"));
+    assert!(!authorization_url.as_str().contains(plaintext_token));
+
+    (cookie, authorization_url, clean)
+}
+
+async fn prepare_token_confirmation(
+    app: &TestApp,
+    plaintext_token: &str,
+    code: &str,
+    github_user_id: &str,
+    github_login: &str,
+) -> String {
+    let (cookie, authorization_url, _) = begin_connection_oauth(app, plaintext_token).await;
+    let state = query_parameter(&authorization_url, "state");
+    app.github.profile_for_code(
+        code,
+        GitHubProfile {
+            user_id: github_user_id.to_owned(),
+            login: github_login.to_owned(),
+            name: None,
+        },
+    );
+
+    let callback = app.get(&callback_uri(code, &state), Some(&cookie)).await;
+    assert_redirect(&callback, "/auth/github/confirm");
+    cookie
+}
+
+async fn confirm_token_connection(app: &TestApp, cookie: &str) -> String {
+    let confirmation = app
+        .post_form("/auth/github/confirm", "", Some(cookie))
+        .await;
+    assert_redirect(&confirmation, "/");
+    cookie_from_response(
+        confirmation
+            .headers()
+            .get("set-cookie")
+            .expect("Confirmation should rotate to a full session"),
+    )
+}
+
+#[tokio::test]
+async fn recovery_url_connects_confirmed_github_identity_and_logs_in() {
+    let app = TestApp::new().await;
+    let (user_id, previous_github_id) = app.create_user("Axel").await;
+    let old_cookie = app.login(&previous_github_id).await;
+    let issued = reset_auth(&app.db, &user_id, Utc::now()).await.unwrap();
+
+    let cookie = prepare_token_confirmation(
+        &app,
+        &issued.plaintext_token,
+        "recover-code",
+        "900",
+        "axelav",
+    )
+    .await;
+    let confirmation_page = body_string(app.get("/auth/github/confirm", Some(&cookie)).await).await;
+    assert!(confirmation_page.contains("Recover account"));
+    let new_cookie = confirm_token_connection(&app, &cookie).await;
+
+    assert_eq!(
+        app.get("/", Some(&new_cookie)).await.status(),
+        StatusCode::OK
+    );
+    assert_redirect(&app.get("/", Some(&old_cookie)).await, "/login");
+    let linked: (String, String, i64) =
+        sqlx::query_as("SELECT github_user_id, github_login, auth_version FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(linked, ("900".into(), "axelav".into(), 3));
+}
+
+#[tokio::test]
+async fn invitation_url_connects_the_precreated_user() {
+    let app = TestApp::new().await;
+    let issued = issue_invitation(&app.db, "Invited", Utc::now())
+        .await
+        .unwrap();
+    let cookie = prepare_token_confirmation(
+        &app,
+        &issued.plaintext_token,
+        "invite-code",
+        "901",
+        "invited",
+    )
+    .await;
+
+    let confirmation_page = body_string(app.get("/auth/github/confirm", Some(&cookie)).await).await;
+    assert!(confirmation_page.contains("Accept invitation"));
+    let full_cookie = confirm_token_connection(&app, &cookie).await;
+
+    assert_eq!(
+        app.get("/", Some(&full_cookie)).await.status(),
+        StatusCode::OK
+    );
+    let linked_user_id: String =
+        sqlx::query_scalar("SELECT id FROM users WHERE github_user_id = '901'")
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(linked_user_id, issued.user_id);
+}
+
+#[tokio::test]
+async fn recovery_token_is_not_consumed_before_confirmation() {
+    let app = TestApp::new().await;
+    let (user_id, _) = app.create_user("Recovering").await;
+    let issued = reset_auth(&app.db, &user_id, Utc::now()).await.unwrap();
+
+    prepare_token_confirmation(
+        &app,
+        &issued.plaintext_token,
+        "pending-code",
+        "902",
+        "pending",
+    )
+    .await;
+
+    let consumed_at: Option<String> =
+        sqlx::query_scalar("SELECT consumed_at FROM auth_connection_tokens WHERE user_id = ?")
+            .bind(user_id)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(consumed_at, None);
+}
+
+#[tokio::test]
+async fn successful_confirmation_consumes_token() {
+    let app = TestApp::new().await;
+    let (user_id, _) = app.create_user("Recovering").await;
+    let issued = reset_auth(&app.db, &user_id, Utc::now()).await.unwrap();
+    let now = Utc::now();
+    sqlx::query(
+        "INSERT INTO auth_connection_tokens \
+         (id, user_id, token_hash, purpose, created_at, expires_at, consumed_at) \
+         VALUES ('other-active-token', ?, 'other-active-hash', 'recovery', ?, ?, NULL)",
+    )
+    .bind(&user_id)
+    .bind(now.to_rfc3339_opts(SecondsFormat::Nanos, true))
+    .bind((now + Duration::hours(1)).to_rfc3339_opts(SecondsFormat::Nanos, true))
+    .execute(&app.db)
+    .await
+    .unwrap();
+    let cookie = prepare_token_confirmation(
+        &app,
+        &issued.plaintext_token,
+        "consume-code",
+        "903",
+        "consumed",
+    )
+    .await;
+
+    confirm_token_connection(&app, &cookie).await;
+
+    let active_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM auth_connection_tokens WHERE user_id = ? AND consumed_at IS NULL",
+    )
+    .bind(user_id)
+    .fetch_one(&app.db)
+    .await
+    .unwrap();
+    assert_eq!(active_count, 0);
+}
+
+#[tokio::test]
+async fn used_recovery_url_cannot_be_replayed() {
+    let app = TestApp::new().await;
+    let (user_id, _) = app.create_user("Recovering").await;
+    let issued = reset_auth(&app.db, &user_id, Utc::now()).await.unwrap();
+    let cookie =
+        prepare_token_confirmation(&app, &issued.plaintext_token, "once-code", "904", "once").await;
+    confirm_token_connection(&app, &cookie).await;
+
+    let replay = app
+        .get(&format!("/recover?token={}", issued.plaintext_token), None)
+        .await;
+    let body = body_string(replay).await;
+    assert!(body.contains("invalid or expired"));
+    assert!(!body.contains(&issued.plaintext_token));
+}
+
+#[tokio::test]
+async fn superseded_recovery_url_is_rejected() {
+    let app = TestApp::new().await;
+    let (user_id, _) = app.create_user("Recovering").await;
+    let issued = reset_auth(&app.db, &user_id, Utc::now()).await.unwrap();
+    let entry = app
+        .get(&format!("/recover?token={}", issued.plaintext_token), None)
+        .await;
+    assert_redirect(&entry, "/auth/github/recover");
+    let cookie = cookie_from_response(entry.headers().get("set-cookie").unwrap());
+    reset_auth(&app.db, &user_id, Utc::now()).await.unwrap();
+
+    let response = app.get("/auth/github/recover", Some(&cookie)).await;
+    let body = body_string(response).await;
+    assert!(body.contains("invalid or expired"));
+    let linked: Option<String> =
+        sqlx::query_scalar("SELECT github_user_id FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(linked, None);
+}
+
+#[tokio::test]
+async fn expired_recovery_url_is_rejected() {
+    let app = TestApp::new().await;
+    let (user_id, _) = app.create_user("Recovering").await;
+    let issued = reset_auth(&app.db, &user_id, Utc::now() - Duration::hours(5))
+        .await
+        .unwrap();
+
+    let response = app
+        .get(&format!("/recover?token={}", issued.plaintext_token), None)
+        .await;
+    assert_eq!(response.headers()["referrer-policy"], "no-referrer");
+    let body = body_string(response).await;
+    assert!(body.contains("invalid or expired"));
+    assert!(!body.contains(&issued.plaintext_token));
+}
+
+#[tokio::test]
+async fn token_confirmation_rechecks_expiration() {
+    let app = TestApp::new().await;
+    let (user_id, _) = app.create_user("Recovering").await;
+    let issued = reset_auth(&app.db, &user_id, Utc::now()).await.unwrap();
+    let claim = validate_token(&app.db, &issued.plaintext_token, Utc::now())
+        .await
+        .unwrap();
+    let cookie =
+        prepare_token_confirmation(&app, &issued.plaintext_token, "late-code", "905", "late").await;
+    sqlx::query("UPDATE auth_connection_tokens SET expires_at = ? WHERE id = ?")
+        .bind((Utc::now() - Duration::seconds(1)).to_rfc3339_opts(SecondsFormat::Nanos, true))
+        .bind(claim.token_id)
+        .execute(&app.db)
+        .await
+        .unwrap();
+
+    let confirm = app
+        .post_form("/auth/github/confirm", "", Some(&cookie))
+        .await;
+    let body = body_string(confirm).await;
+    assert!(body.contains("invalid or expired"));
+    let linked: Option<String> =
+        sqlx::query_scalar("SELECT github_user_id FROM users WHERE id = ?")
+            .bind(user_id)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(linked, None);
+}
+
+#[tokio::test]
+async fn token_confirmation_rechecks_supersession() {
+    let app = TestApp::new().await;
+    let (user_id, _) = app.create_user("Recovering").await;
+    let issued = reset_auth(&app.db, &user_id, Utc::now()).await.unwrap();
+    let cookie = prepare_token_confirmation(
+        &app,
+        &issued.plaintext_token,
+        "superseded-code",
+        "908",
+        "superseded",
+    )
+    .await;
+    let replacement = reset_auth(&app.db, &user_id, Utc::now()).await.unwrap();
+
+    let confirm = app
+        .post_form("/auth/github/confirm", "", Some(&cookie))
+        .await;
+    let body = body_string(confirm).await;
+    assert!(body.contains("invalid or expired"));
+    let linked: Option<String> =
+        sqlx::query_scalar("SELECT github_user_id FROM users WHERE id = ?")
+            .bind(&user_id)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(linked, None);
+    assert!(
+        validate_token(&app.db, &replacement.plaintext_token, Utc::now())
+            .await
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+async fn token_confirmation_rejects_duplicate_github_identity() {
+    let app = TestApp::new().await;
+    let owner_id = app.create_github_user("Owner", "906", "owner").await;
+    let issued = issue_invitation(&app.db, "Invited", Utc::now())
+        .await
+        .unwrap();
+    let cookie = prepare_token_confirmation(
+        &app,
+        &issued.plaintext_token,
+        "duplicate-code",
+        "906",
+        "owner",
+    )
+    .await;
+
+    let response = app
+        .post_form("/auth/github/confirm", "", Some(&cookie))
+        .await;
+    let body = body_string(response).await;
+    assert!(body.contains("already connected"));
+    assert!(!body.contains(&owner_id));
+    assert!(!body.contains(&issued.user_id));
+    let target_github: Option<String> =
+        sqlx::query_scalar("SELECT github_user_id FROM users WHERE id = ?")
+            .bind(&issued.user_id)
+            .fetch_one(&app.db)
+            .await
+            .unwrap();
+    assert_eq!(target_github, None);
+    assert!(
+        validate_token(&app.db, &issued.plaintext_token, Utc::now())
+            .await
+            .is_ok()
+    );
+}
+
+#[tokio::test]
+async fn token_query_is_removed_before_redirecting_to_github() {
+    let app = TestApp::new().await;
+    let issued = issue_invitation(&app.db, "Invited", Utc::now())
+        .await
+        .unwrap();
+
+    let (_, authorization_url, clean_response) =
+        begin_connection_oauth(&app, &issued.plaintext_token).await;
+
+    assert_eq!(clean_response.headers()["referrer-policy"], "no-referrer");
+    assert_eq!(authorization_url.path(), "/authorize");
+    assert!(!authorization_url.as_str().contains(&issued.plaintext_token));
+}
+
+#[tokio::test]
+async fn recovery_callback_consumes_attempt_before_rejecting_provider_denial() {
+    let app = TestApp::new().await;
+    let issued = issue_invitation(&app.db, "Invited", Utc::now())
+        .await
+        .unwrap();
+    let (cookie, authorization_url, _) =
+        begin_connection_oauth(&app, &issued.plaintext_token).await;
+    let state = query_parameter(&authorization_url, "state");
+
+    let denied = app
+        .get(
+            &format!(
+                "/auth/github/callback?error=access_denied&error_description=private&state={state}"
+            ),
+            Some(&cookie),
+        )
+        .await;
+    let body = body_string(denied).await;
+    assert!(body.contains("invalid or expired"));
+    assert!(!body.contains("access_denied"));
+    assert!(!body.contains("private"));
+
+    app.github.profile_for_code(
+        "replay-code",
+        GitHubProfile {
+            user_id: "907".into(),
+            login: "replay".into(),
+            name: None,
+        },
+    );
+    let replay = app
+        .get(&callback_uri("replay-code", &state), Some(&cookie))
+        .await;
+    let body = body_string(replay).await;
+    assert!(body.contains("couldn’t complete GitHub sign-in"));
+}
+
+#[tokio::test]
+async fn malformed_and_duplicate_recovery_queries_show_the_same_safe_error() {
+    let app = TestApp::new().await;
+    let issued = issue_invitation(&app.db, "Invited", Utc::now())
+        .await
+        .unwrap();
+
+    for uri in [
+        "/recover?token=%FF".to_owned(),
+        format!("/recover?token={0}&token={0}", issued.plaintext_token),
+        "/recover?unrelated=value".to_owned(),
+    ] {
+        let response = app.get(&uri, None).await;
+        assert_eq!(response.headers()["referrer-policy"], "no-referrer");
+        let body = body_string(response).await;
+        assert!(body.contains("invalid or expired"));
+        assert!(!body.contains(&issued.plaintext_token));
+        assert!(!body.contains("Database"));
+    }
+
+    assert!(
+        validate_token(&app.db, &issued.plaintext_token, Utc::now())
+            .await
+            .is_ok()
+    );
+}
 
 #[tokio::test]
 async fn invitation_is_hashed_single_use_and_expires_in_four_hours() {
