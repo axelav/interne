@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+
+{% block title %}Sign-in error - Interne{% endblock %}
+
+{% block content %}
+<div class="login-page auth-error">
+    <h1 class="form-heading">Sign-in error</h1>
+    <p class="auth-status">{{ message }}</p>
+    <a class="back-link" href="/login">Back to login</a>
+</div>
+{% endblock %}

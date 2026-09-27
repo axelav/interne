@@ -1,15 +1,15 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{assert_hx_redirect, assert_redirect, body_string, TestApp};
+use common::{TestApp, assert_hx_redirect, assert_redirect, body_string};
 
 // --- CRUD ---
 
 #[tokio::test]
 async fn create_collection() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (_user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let resp = app
         .post_form("/collections", "name=My+Collection", Some(&cookie))
@@ -25,12 +25,10 @@ async fn create_collection() {
 #[tokio::test]
 async fn create_collection_empty_name_shows_error() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (_user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
-    let resp = app
-        .post_form("/collections", "name=", Some(&cookie))
-        .await;
+    let resp = app.post_form("/collections", "name=", Some(&cookie)).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
     assert!(html.contains("Name is required"));
@@ -39,8 +37,8 @@ async fn create_collection_empty_name_shows_error() {
 #[tokio::test]
 async fn show_collection_as_owner() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Owner").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Owner").await;
+    let cookie = app.login(&github_user_id).await;
 
     let col_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -70,8 +68,8 @@ async fn show_collection_as_owner() {
 async fn show_collection_as_non_member_redirects() {
     let app = TestApp::new().await;
     let (owner_id, _) = app.create_user("Owner").await;
-    let (_, outsider_invite) = app.create_user("Outsider").await;
-    let cookie = app.login(&outsider_invite).await;
+    let (_, outsider_github_user_id) = app.create_user("Outsider").await;
+    let cookie = app.login(&outsider_github_user_id).await;
 
     let col_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -97,8 +95,8 @@ async fn show_collection_as_non_member_redirects() {
 #[tokio::test]
 async fn update_collection_as_owner() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Owner").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Owner").await;
+    let cookie = app.login(&github_user_id).await;
 
     let col_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -137,8 +135,8 @@ async fn update_collection_as_owner() {
 async fn update_collection_as_member_does_nothing() {
     let app = TestApp::new().await;
     let (owner_id, _) = app.create_user("Owner").await;
-    let (member_id, member_invite) = app.create_user("Member").await;
-    let cookie = app.login(&member_invite).await;
+    let (member_id, member_github_user_id) = app.create_user("Member").await;
+    let cookie = app.login(&member_github_user_id).await;
 
     let col_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -185,8 +183,8 @@ async fn update_collection_as_member_does_nothing() {
 #[tokio::test]
 async fn delete_collection_as_owner() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Owner").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Owner").await;
+    let cookie = app.login(&github_user_id).await;
 
     let col_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -220,8 +218,8 @@ async fn delete_collection_as_owner() {
 async fn delete_collection_as_member_does_nothing() {
     let app = TestApp::new().await;
     let (owner_id, _) = app.create_user("Owner").await;
-    let (member_id, member_invite) = app.create_user("Member").await;
-    let cookie = app.login(&member_invite).await;
+    let (member_id, member_github_user_id) = app.create_user("Member").await;
+    let cookie = app.login(&member_github_user_id).await;
 
     let col_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -265,8 +263,8 @@ async fn delete_collection_as_member_does_nothing() {
 async fn join_collection_via_invite_code() {
     let app = TestApp::new().await;
     let (owner_id, _) = app.create_user("Owner").await;
-    let (_, member_invite) = app.create_user("Member").await;
-    let cookie = app.login(&member_invite).await;
+    let (_, member_github_user_id) = app.create_user("Member").await;
+    let cookie = app.login(&member_github_user_id).await;
 
     let col_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -305,8 +303,8 @@ async fn join_collection_via_invite_code() {
 #[tokio::test]
 async fn regenerate_invite_as_owner() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Owner").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Owner").await;
+    let cookie = app.login(&github_user_id).await;
 
     let col_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -330,21 +328,20 @@ async fn regenerate_invite_as_owner() {
     )
     .await;
 
-    let (new_code,): (String,) =
-        sqlx::query_as("SELECT invite_code FROM collections WHERE id = ?")
-            .bind(&col_id)
-            .fetch_one(&app.db)
-            .await
-            .unwrap();
+    let (new_code,): (String,) = sqlx::query_as("SELECT invite_code FROM collections WHERE id = ?")
+        .bind(&col_id)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
     assert_ne!(new_code, "old-code");
 }
 
 #[tokio::test]
 async fn owner_removes_member() {
     let app = TestApp::new().await;
-    let (owner_id, owner_invite) = app.create_user("Owner").await;
+    let (owner_id, owner_github_user_id) = app.create_user("Owner").await;
     let (member_id, _) = app.create_user("Member").await;
-    let cookie = app.login(&owner_invite).await;
+    let cookie = app.login(&owner_github_user_id).await;
 
     let col_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -392,8 +389,8 @@ async fn owner_removes_member() {
 async fn member_leaves_collection() {
     let app = TestApp::new().await;
     let (owner_id, _) = app.create_user("Owner").await;
-    let (member_id, member_invite) = app.create_user("Member").await;
-    let cookie = app.login(&member_invite).await;
+    let (member_id, member_github_user_id) = app.create_user("Member").await;
+    let cookie = app.login(&member_github_user_id).await;
 
     let col_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -421,11 +418,7 @@ async fn member_leaves_collection() {
     .unwrap();
 
     let resp = app
-        .post_form(
-            &format!("/collections/{}/leave", col_id),
-            "",
-            Some(&cookie),
-        )
+        .post_form(&format!("/collections/{}/leave", col_id), "", Some(&cookie))
         .await;
     assert_redirect(&resp, "/collections");
 

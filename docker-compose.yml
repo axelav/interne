@@ -8,4 +8,9 @@ services:
     environment:
       - DATABASE_URL=sqlite:/app/data/interne.db
       - RUST_LOG=info
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:?Set GITHUB_CLIENT_ID in the deployment environment}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:?Set GITHUB_CLIENT_SECRET in the deployment secret environment}
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to the deployed HTTPS origin}
+      - GITHUB_SIGNUP_MODE=${GITHUB_SIGNUP_MODE:-closed}
+      - SECURE_COOKIES=${SECURE_COOKIES:-true}
     restart: unless-stopped

@@ -17,7 +17,11 @@ fn main() {
         let path = entry.path();
         if path.is_file() {
             let contents = fs::read(&path).unwrap();
-            path.file_name().unwrap().to_str().unwrap().hash(&mut hasher);
+            path.file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .hash(&mut hasher);
             contents.hash(&mut hasher);
         }
     }

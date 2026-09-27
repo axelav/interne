@@ -1,18 +1,18 @@
 use askama::Template;
 use axum::{
+    Form, Router,
     extract::{Path, State},
     response::{Html, IntoResponse, Redirect},
     routing::{delete, get, post},
-    Form, Router,
 };
 use serde::Deserialize;
 use sqlx::FromRow;
 use std::collections::HashMap;
 
+use crate::AppState;
 use crate::auth::AuthUser;
 use crate::error::AppError;
 use crate::models::{Collection, CollectionMember, User};
-use crate::AppState;
 
 #[derive(Template)]
 #[template(path = "collections/list.html")]
@@ -94,7 +94,10 @@ fn validate_collection_form(form: &CollectionForm) -> HashMap<String, String> {
     }
 
     if form.name.len() > 100 {
-        errors.insert("name".to_string(), "Name must be under 100 characters".to_string());
+        errors.insert(
+            "name".to_string(),
+            "Name must be under 100 characters".to_string(),
+        );
     }
 
     errors
@@ -110,7 +113,10 @@ pub fn router() -> Router<AppState> {
         .route("/collections/{id}/edit", get(edit_collection_form))
         .route("/collections/{id}", post(update_collection))
         .route("/collections/{id}", delete(delete_collection))
-        .route("/collections/{id}/regenerate-invite", post(regenerate_invite))
+        .route(
+            "/collections/{id}/regenerate-invite",
+            post(regenerate_invite),
+        )
         .route("/collections/{id}/leave", post(leave_collection))
         .route("/collections/{id}/members/{user_id}", delete(remove_member))
 }
@@ -204,12 +210,11 @@ async fn join_collection(
     AuthUser(user): AuthUser,
     Form(form): Form<JoinForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    let collection: Option<Collection> = sqlx::query_as(
-        "SELECT * FROM collections WHERE invite_code = ?"
-    )
-    .bind(&form.invite_code)
-    .fetch_optional(&state.db)
-    .await?;
+    let collection: Option<Collection> =
+        sqlx::query_as("SELECT * FROM collections WHERE invite_code = ?")
+            .bind(&form.invite_code)
+            .fetch_optional(&state.db)
+            .await?;
 
     if let Some(collection) = collection {
         if collection.owner_id == user.id {
@@ -241,7 +246,7 @@ async fn show_collection(
         WHERE c.id = ? AND (c.owner_id = ? OR c.id IN (
             SELECT collection_id FROM collection_members WHERE user_id = ?
         ))
-        "#
+        "#,
     )
     .bind(&id)
     .bind(&user.id)
@@ -258,7 +263,7 @@ async fn show_collection(
         SELECT u.* FROM users u
         JOIN collection_members cm ON cm.user_id = u.id
         WHERE cm.collection_id = ?
-        "#
+        "#,
     )
     .bind(&id)
     .fetch_all(&state.db)
@@ -280,13 +285,12 @@ async fn edit_collection_form(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, AppError> {
-    let collection: Option<Collection> = sqlx::query_as(
-        "SELECT * FROM collections WHERE id = ? AND owner_id = ?"
-    )
-    .bind(&id)
-    .bind(&user.id)
-    .fetch_optional(&state.db)
-    .await?;
+    let collection: Option<Collection> =
+        sqlx::query_as("SELECT * FROM collections WHERE id = ? AND owner_id = ?")
+            .bind(&id)
+            .bind(&user.id)
+            .fetch_optional(&state.db)
+            .await?;
 
     let Some(collection) = collection else {
         return Ok(Redirect::to("/collections").into_response());
@@ -309,13 +313,12 @@ async fn update_collection(
 ) -> Result<impl IntoResponse, AppError> {
     let errors = validate_collection_form(&form);
     if !errors.is_empty() {
-        let collection: Option<Collection> = sqlx::query_as(
-            "SELECT * FROM collections WHERE id = ? AND owner_id = ?"
-        )
-        .bind(&id)
-        .bind(&user.id)
-        .fetch_optional(&state.db)
-        .await?;
+        let collection: Option<Collection> =
+            sqlx::query_as("SELECT * FROM collections WHERE id = ? AND owner_id = ?")
+                .bind(&id)
+                .bind(&user.id)
+                .fetch_optional(&state.db)
+                .await?;
 
         let template = CollectionFormTemplate {
             collection,
@@ -361,13 +364,15 @@ async fn regenerate_invite(
     let new_code = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
 
-    sqlx::query("UPDATE collections SET invite_code = ?, updated_at = ? WHERE id = ? AND owner_id = ?")
-        .bind(&new_code)
-        .bind(&now)
-        .bind(&id)
-        .bind(&user.id)
-        .execute(&state.db)
-        .await?;
+    sqlx::query(
+        "UPDATE collections SET invite_code = ?, updated_at = ? WHERE id = ? AND owner_id = ?",
+    )
+    .bind(&new_code)
+    .bind(&now)
+    .bind(&id)
+    .bind(&user.id)
+    .execute(&state.db)
+    .await?;
 
     Ok(Redirect::to(&format!("/collections/{}", id)))
 }
@@ -393,13 +398,12 @@ async fn remove_member(
     Path((collection_id, member_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, AppError> {
     // Verify user is owner
-    let collection: Option<Collection> = sqlx::query_as(
-        "SELECT * FROM collections WHERE id = ? AND owner_id = ?"
-    )
-    .bind(&collection_id)
-    .bind(&user.id)
-    .fetch_optional(&state.db)
-    .await?;
+    let collection: Option<Collection> =
+        sqlx::query_as("SELECT * FROM collections WHERE id = ? AND owner_id = ?")
+            .bind(&collection_id)
+            .bind(&user.id)
+            .fetch_optional(&state.db)
+            .await?;
 
     if collection.is_some() {
         sqlx::query("DELETE FROM collection_members WHERE collection_id = ? AND user_id = ?")
@@ -409,7 +413,11 @@ async fn remove_member(
             .await?;
     }
 
-    Ok(([("HX-Redirect", format!("/collections/{}", collection_id))], "").into_response())
+    Ok((
+        [("HX-Redirect", format!("/collections/{}", collection_id))],
+        "",
+    )
+        .into_response())
 }
 
 #[cfg(test)]

@@ -1,13 +1,13 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{body_string, TestApp};
+use common::{TestApp, body_string};
 
 #[tokio::test]
 async fn export_returns_json_with_entries() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     // Create an entry with tags
     let entry_id = uuid::Uuid::new_v4().to_string();

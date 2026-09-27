@@ -1,8 +1,11 @@
 use serde::{Deserialize, Deserializer};
 use sqlx::SqlitePool;
 use std::fs;
+use url::Url;
 use uuid::Uuid;
 
+use crate::config::{AuthConfig, ConfigError, SignupMode};
+use crate::connection_tokens::{connection_url, issue_invitation, reset_auth};
 use crate::models::Interval;
 
 // Custom deserializer to handle duration as either string or integer
@@ -44,7 +47,11 @@ struct LegacyEntry {
     tags: Vec<String>,
 }
 
-pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn import_data(
+    pool: &SqlitePool,
+    file_path: &str,
+    user_id: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Verify user exists before importing
     let user_exists: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM users WHERE id = ?")
         .bind(user_id)
@@ -92,7 +99,7 @@ pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> R
         .bind(&entry.title)
         .bind(&entry.description)
         .bind(duration)
-        .bind(&interval)
+        .bind(interval)
         .bind(&entry.dismissed_at)
         .bind(&created_at)
         .bind(&updated_at)
@@ -137,7 +144,7 @@ pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> R
             for _ in 0..visited {
                 let visit_id = Uuid::new_v4().to_string();
                 sqlx::query(
-                    "INSERT INTO visits (id, entry_id, user_id, visited_at) VALUES (?, ?, ?, ?)"
+                    "INSERT INTO visits (id, entry_id, user_id, visited_at) VALUES (?, ?, ?, ?)",
                 )
                 .bind(&visit_id)
                 .bind(&id)
@@ -156,27 +163,96 @@ pub async fn import_data(pool: &SqlitePool, file_path: &str, user_id: &str) -> R
     Ok(())
 }
 
-pub async fn create_user(pool: &SqlitePool, name: &str, email: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
-    let id = Uuid::new_v4().to_string();
-    let invite_code = Uuid::new_v4().to_string();
-    let now = chrono::Utc::now().to_rfc3339();
+pub async fn invite_user(
+    pool: &SqlitePool,
+    name: &str,
+    public_base_url: &Url,
+) -> Result<(String, Url), Box<dyn std::error::Error>> {
+    let issued = issue_invitation(pool, name, chrono::Utc::now()).await?;
+    let url = connection_url(public_base_url, &issued.plaintext_token);
+    Ok((issued.user_id, url))
+}
 
-    sqlx::query(
-        "INSERT INTO users (id, name, email, invite_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)"
-    )
-    .bind(&id)
-    .bind(name)
-    .bind(email)
-    .bind(&invite_code)
-    .bind(&now)
-    .bind(&now)
-    .execute(pool)
-    .await?;
+pub async fn reset_user_auth(
+    pool: &SqlitePool,
+    user_id: &str,
+    public_base_url: &Url,
+) -> Result<Url, Box<dyn std::error::Error>> {
+    let issued = reset_auth(pool, user_id, chrono::Utc::now()).await?;
+    Ok(connection_url(public_base_url, &issued.plaintext_token))
+}
 
-    println!("Created user:");
-    println!("  ID: {}", id);
-    println!("  Name: {}", name);
-    println!("  Invite Code: {}", invite_code);
+pub fn connection_base_url_from_lookup<F>(mut lookup: F) -> Result<Url, ConfigError>
+where
+    F: FnMut(&str) -> Option<String>,
+{
+    let public_base_url =
+        lookup("PUBLIC_BASE_URL").ok_or(ConfigError::MissingVariable("PUBLIC_BASE_URL"))?;
+    Ok(AuthConfig::new(&public_base_url, SignupMode::Closed)?.public_base_url)
+}
 
-    Ok(())
+#[cfg(test)]
+mod tests {
+    use std::str::FromStr;
+
+    use sqlx::SqlitePool;
+    use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+    use url::Url;
+
+    use super::{connection_base_url_from_lookup, invite_user, reset_user_auth};
+
+    async fn migrated_pool() -> SqlitePool {
+        let options = SqliteConnectOptions::from_str("sqlite::memory:")
+            .unwrap()
+            .create_if_missing(true);
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .connect_with(options)
+            .await
+            .unwrap();
+        sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+        pool
+    }
+
+    #[tokio::test]
+    async fn invite_user_returns_the_created_id_and_connection_url() {
+        let pool = migrated_pool().await;
+        let base = Url::parse("https://interne.test/").unwrap();
+
+        let (user_id, url) = invite_user(&pool, "Guest", &base).await.unwrap();
+
+        assert_eq!(url.path(), "/recover");
+        assert!(url.query_pairs().any(|(key, _)| key == "token"));
+        let user: (String, Option<String>, Option<String>, Option<String>) = sqlx::query_as(
+            "SELECT name, email, invite_code, github_user_id FROM users WHERE id = ?",
+        )
+        .bind(user_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        assert_eq!(user, ("Guest".into(), None, None, None));
+    }
+
+    #[tokio::test]
+    async fn reset_user_auth_returns_a_recovery_url() {
+        let pool = migrated_pool().await;
+        let base = Url::parse("https://interne.test/").unwrap();
+        let (user_id, _) = invite_user(&pool, "Guest", &base).await.unwrap();
+
+        let url = reset_user_auth(&pool, &user_id, &base).await.unwrap();
+
+        assert_eq!(url.path(), "/recover");
+        assert!(url.query_pairs().any(|(key, _)| key == "token"));
+    }
+
+    #[test]
+    fn connection_commands_require_only_public_base_url() {
+        let url = connection_base_url_from_lookup(|key| match key {
+            "PUBLIC_BASE_URL" => Some("https://interne.test".into()),
+            unexpected => panic!("must not read {unexpected}"),
+        })
+        .unwrap();
+
+        assert_eq!(url.as_str(), "https://interne.test/");
+    }
 }

@@ -1,13 +1,13 @@
 mod common;
 
 use axum::http::StatusCode;
-use common::{assert_hx_redirect, assert_redirect, body_string, TestApp};
+use common::{TestApp, assert_hx_redirect, assert_redirect, body_string};
 
 #[tokio::test]
 async fn create_entry_with_valid_form() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (_user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let body = "url=https%3A%2F%2Fexample.com&title=Test+Entry&description=&duration=3&interval=days&tags=&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
@@ -22,8 +22,8 @@ async fn create_entry_with_valid_form() {
 #[tokio::test]
 async fn create_entry_with_empty_title_shows_error() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (_user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let body = "url=https%3A%2F%2Fexample.com&title=&description=&duration=3&interval=days&tags=&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
@@ -35,11 +35,12 @@ async fn create_entry_with_empty_title_shows_error() {
 #[tokio::test]
 async fn create_entry_with_bare_domain_normalizes_url() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     // "yahoo.com" should be accepted and normalized to "https://yahoo.com/"
-    let body = "url=yahoo.com&title=Yahoo&description=&duration=3&interval=days&tags=&collection_id=";
+    let body =
+        "url=yahoo.com&title=Yahoo&description=&duration=3&interval=days&tags=&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
     assert_redirect(&resp, "/");
 
@@ -54,8 +55,8 @@ async fn create_entry_with_bare_domain_normalizes_url() {
 #[tokio::test]
 async fn create_entry_with_https_url_preserves_it() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let body = "url=https%3A%2F%2Fexample.com%2Fpath&title=Example&description=&duration=3&interval=days&tags=&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
@@ -72,8 +73,8 @@ async fn create_entry_with_https_url_preserves_it() {
 #[tokio::test]
 async fn create_entry_with_http_url_preserves_it() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let body = "url=http%3A%2F%2Fexample.com&title=Example&description=&duration=3&interval=days&tags=&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
@@ -90,11 +91,12 @@ async fn create_entry_with_http_url_preserves_it() {
 #[tokio::test]
 async fn create_entry_with_invalid_url_shows_error() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (_user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     // "not a url" has no valid domain structure
-    let body = "url=not+a+url&title=Test&description=&duration=3&interval=days&tags=&collection_id=";
+    let body =
+        "url=not+a+url&title=Test&description=&duration=3&interval=days&tags=&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
@@ -104,8 +106,8 @@ async fn create_entry_with_invalid_url_shows_error() {
 #[tokio::test]
 async fn create_entry_with_bare_word_shows_error() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (_user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     // "yahoo" alone is not a valid URL even after normalization
     let body = "url=yahoo&title=Test&description=&duration=3&interval=days&tags=&collection_id=";
@@ -118,8 +120,8 @@ async fn create_entry_with_bare_word_shows_error() {
 #[tokio::test]
 async fn create_entry_with_ftp_url_shows_error() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (_user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let body = "url=ftp%3A%2F%2Fexample.com&title=Test&description=&duration=3&interval=days&tags=&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
@@ -131,8 +133,8 @@ async fn create_entry_with_ftp_url_shows_error() {
 #[tokio::test]
 async fn create_entry_with_path_and_query_normalizes() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let body = "url=example.com%2Fpath%3Fq%3D1&title=Test&description=&duration=3&interval=days&tags=&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
@@ -149,8 +151,8 @@ async fn create_entry_with_path_and_query_normalizes() {
 #[tokio::test]
 async fn create_entry_with_zero_duration_shows_error() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (_user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let body = "url=https%3A%2F%2Fexample.com&title=Test&description=&duration=0&interval=days&tags=&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
@@ -162,8 +164,8 @@ async fn create_entry_with_zero_duration_shows_error() {
 #[tokio::test]
 async fn edit_entry_as_owner() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     // Create entry directly in DB
     let entry_id = uuid::Uuid::new_v4().to_string();
@@ -192,11 +194,9 @@ async fn edit_entry_as_owner() {
     assert!(html.contains("Original Title"));
 
     // POST update
-    let body = format!(
-        "url=https%3A%2F%2Fexample.com&title=Updated+Title&description=&duration=5&interval=weeks&tags=&collection_id="
-    );
+    let body = "url=https%3A%2F%2Fexample.com&title=Updated+Title&description=&duration=5&interval=weeks&tags=&collection_id=";
     let resp = app
-        .post_form(&format!("/entries/{}", entry_id), &body, Some(&cookie))
+        .post_form(&format!("/entries/{}", entry_id), body, Some(&cookie))
         .await;
     assert_redirect(&resp, "/");
 }
@@ -205,8 +205,8 @@ async fn edit_entry_as_owner() {
 async fn edit_entry_as_non_owner_redirects() {
     let app = TestApp::new().await;
     let (owner_id, _) = app.create_user("Owner").await;
-    let (_, other_invite) = app.create_user("Other").await;
-    let cookie = app.login(&other_invite).await;
+    let (_, other_github_user_id) = app.create_user("Other").await;
+    let cookie = app.login(&other_github_user_id).await;
 
     // Create entry owned by someone else
     let entry_id = uuid::Uuid::new_v4().to_string();
@@ -236,8 +236,8 @@ async fn edit_entry_as_non_owner_redirects() {
 #[tokio::test]
 async fn delete_entry_as_owner() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let entry_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -274,8 +274,8 @@ async fn delete_entry_as_owner() {
 async fn delete_entry_as_non_owner() {
     let app = TestApp::new().await;
     let (owner_id, _) = app.create_user("Owner").await;
-    let (_, other_invite) = app.create_user("Other").await;
-    let cookie = app.login(&other_invite).await;
+    let (_, other_github_user_id) = app.create_user("Other").await;
+    let cookie = app.login(&other_github_user_id).await;
 
     let entry_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -312,8 +312,8 @@ async fn delete_entry_as_non_owner() {
 #[tokio::test]
 async fn visit_entry_updates_availability() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     // Create an available entry (never dismissed)
     let entry_id = uuid::Uuid::new_v4().to_string();
@@ -353,12 +353,11 @@ async fn visit_entry_updates_availability() {
     assert_eq!(visit_count.0, 1);
 
     // Verify dismissed_at was set
-    let entry: (Option<String>,) =
-        sqlx::query_as("SELECT dismissed_at FROM entries WHERE id = ?")
-            .bind(&entry_id)
-            .fetch_one(&app.db)
-            .await
-            .unwrap();
+    let entry: (Option<String>,) = sqlx::query_as("SELECT dismissed_at FROM entries WHERE id = ?")
+        .bind(&entry_id)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
     assert!(entry.0.is_some());
 
     // Entry should NOT appear on home page (no longer available)
@@ -375,8 +374,8 @@ async fn visit_entry_updates_availability() {
 #[tokio::test]
 async fn home_shows_only_available_entries() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let now = chrono::Utc::now();
     let now_str = now.to_rfc3339();
@@ -434,8 +433,8 @@ async fn home_shows_only_available_entries() {
 #[tokio::test]
 async fn collection_member_sees_shared_entries() {
     let app = TestApp::new().await;
-    let (owner_id, _owner_invite) = app.create_user("Owner").await;
-    let (member_id, member_invite) = app.create_user("Member").await;
+    let (owner_id, _owner_github_user_id) = app.create_user("Owner").await;
+    let (member_id, member_github_user_id) = app.create_user("Member").await;
 
     // Create collection
     let collection_id = uuid::Uuid::new_v4().to_string();
@@ -483,7 +482,7 @@ async fn collection_member_sees_shared_entries() {
     .unwrap();
 
     // Member should see the entry
-    let cookie = app.login(&member_invite).await;
+    let cookie = app.login(&member_github_user_id).await;
     let resp = app.get("/", Some(&cookie)).await;
     let html = body_string(resp).await;
     assert!(html.contains("Shared Entry"));
@@ -493,7 +492,7 @@ async fn collection_member_sees_shared_entries() {
 async fn leaving_collection_hides_shared_entries() {
     let app = TestApp::new().await;
     let (owner_id, _) = app.create_user("Owner").await;
-    let (member_id, member_invite) = app.create_user("Member").await;
+    let (member_id, member_github_user_id) = app.create_user("Member").await;
 
     let collection_id = uuid::Uuid::new_v4().to_string();
     let now = chrono::Utc::now().to_rfc3339();
@@ -537,7 +536,7 @@ async fn leaving_collection_hides_shared_entries() {
     .await
     .unwrap();
 
-    let cookie = app.login(&member_invite).await;
+    let cookie = app.login(&member_github_user_id).await;
 
     // Member leaves collection
     let resp = app
@@ -558,8 +557,8 @@ async fn leaving_collection_hides_shared_entries() {
 #[tokio::test]
 async fn create_entry_with_tags() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (_user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let body = "url=https%3A%2F%2Fexample.com&title=Tagged+Entry&description=&duration=3&interval=days&tags=rust%2C+web&collection_id=";
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
@@ -585,20 +584,19 @@ async fn create_entry_with_tags() {
 #[tokio::test]
 async fn update_entry_replaces_tags() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     // Create entry with tags
     let body = "url=https%3A%2F%2Fexample.com&title=Tagged&description=&duration=3&interval=days&tags=rust%2C+web&collection_id=";
     app.post_form("/entries", body, Some(&cookie)).await;
 
     // Find the entry
-    let (entry_id,): (String,) =
-        sqlx::query_as("SELECT id FROM entries WHERE user_id = ?")
-            .bind(&user_id)
-            .fetch_one(&app.db)
-            .await
-            .unwrap();
+    let (entry_id,): (String,) = sqlx::query_as("SELECT id FROM entries WHERE user_id = ?")
+        .bind(&user_id)
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
 
     // Update with different tags
     let body = "url=https%3A%2F%2Fexample.com&title=Tagged&description=&duration=3&interval=days&tags=python%2C+api&collection_id=";
@@ -622,8 +620,8 @@ async fn update_entry_replaces_tags() {
 #[tokio::test]
 async fn waiting_shows_only_not_yet_due_entries() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let now = chrono::Utc::now();
     let now_str = now.to_rfc3339();
@@ -675,8 +673,8 @@ async fn waiting_shows_only_not_yet_due_entries() {
 #[tokio::test]
 async fn unseen_shows_only_unvisited_entries() {
     let app = TestApp::new().await;
-    let (user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -716,16 +714,14 @@ async fn unseen_shows_only_unvisited_entries() {
 
     // Add a visit for the seen entry
     let visit_id = uuid::Uuid::new_v4().to_string();
-    sqlx::query(
-        "INSERT INTO visits (id, entry_id, user_id, visited_at) VALUES (?, ?, ?, ?)",
-    )
-    .bind(&visit_id)
-    .bind(&e2)
-    .bind(&user_id)
-    .bind(&now)
-    .execute(&app.db)
-    .await
-    .unwrap();
+    sqlx::query("INSERT INTO visits (id, entry_id, user_id, visited_at) VALUES (?, ?, ?, ?)")
+        .bind(&visit_id)
+        .bind(&e2)
+        .bind(&user_id)
+        .bind(&now)
+        .execute(&app.db)
+        .await
+        .unwrap();
 
     // /unseen should show only the unvisited entry
     let resp = app.get("/unseen", Some(&cookie)).await;
@@ -737,8 +733,8 @@ async fn unseen_shows_only_unvisited_entries() {
 #[tokio::test]
 async fn create_entry_with_long_description_shows_error() {
     let app = TestApp::new().await;
-    let (_user_id, invite_code) = app.create_user("Test User").await;
-    let cookie = app.login(&invite_code).await;
+    let (_user_id, github_user_id) = app.create_user("Test User").await;
+    let cookie = app.login(&github_user_id).await;
 
     let long_desc = "a".repeat(5001);
     let body = format!(
