@@ -120,14 +120,12 @@ Take an offline archive immediately before deploying the migration. Stopping onl
 `interne` provides a consistent copy while leaving Traefik and unrelated services
 running.
 
-The existing `honkytonk-infra/scripts/backup-interne.sh` refers to a volume named
-`interne-data`; Compose prefixes that name unless the volume has an explicit
-`name`. The script can therefore create and successfully archive an empty volume.
-Repair it in `honkytonk-infra` before rollout. The repaired job must use the
-`interne` container's `/app/data` mount (or the volume name resolved from Compose),
-stop `interne` or use SQLite's online backup API, guarantee restart after both
-success and failure with a trap/finally path when it stops the service, verify that
-the archive contains a non-empty `interne.db`, and only then apply retention.
+The old `honkytonk-infra/scripts/backup-interne.sh` used a bare `interne-data`
+volume, while the production mount is `infra_interne-data`. The repaired job
+archives the stopped `interne` container's `/app/data` mount, verifies that
+`interne.db` is non-empty, restarts the service on success or failure, and only
+then applies retention. Confirm the repaired script is deployed and restore-test
+one of its archives before proceeding.
 
 For the rollout backup, choose a new timestamped path, fail if it already exists,
 and record that exact path in the rollout log and rollback commands. Use the
@@ -140,10 +138,10 @@ ROLLOUT_BACKUP_FILENAME="interne-before-github-auth-$(date -u +%Y%m%d-%H%M%S).ta
 ROLLOUT_BACKUP="/home/deploy/backups/interne/$ROLLOUT_BACKUP_FILENAME"
 test ! -e "$ROLLOUT_BACKUP"
 docker run --rm \
-  --volumes-from interne \
+  --user "$(id -u):$(id -g)" --volumes-from interne \
   -v /home/deploy/backups/interne:/backup \
   -e BACKUP_FILENAME="$ROLLOUT_BACKUP_FILENAME" \
-  alpine sh -c \
+  alpine:3.21 sh -c \
   'umask 077; tar czf "/backup/$BACKUP_FILENAME" -C /app/data .'
 chmod 0600 "$ROLLOUT_BACKUP"
 stat -c '%a %U %G %n' "$ROLLOUT_BACKUP"
@@ -158,9 +156,11 @@ check against the extracted copy. The temporary Alpine container may download th
 `sqlite` package if it is not already cached:
 
 ```bash
+umask 077
 mkdir -m 0700 /home/deploy/backups/interne/restore-check-github-auth
 tar xzf "$ROLLOUT_BACKUP" \
   -C /home/deploy/backups/interne/restore-check-github-auth
+chmod 0700 /home/deploy/backups/interne/restore-check-github-auth
 test -s /home/deploy/backups/interne/restore-check-github-auth/interne.db
 docker run --rm \
   -v /home/deploy/backups/interne/restore-check-github-auth:/data:ro \
