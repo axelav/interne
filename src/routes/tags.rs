@@ -164,7 +164,7 @@ async fn show_tag(
         .into_iter()
         .map(|r| {
             let (entry, count) = r.into_entry_and_count();
-            build_entry_view(entry, count, now)
+            build_entry_view(entry, count, vec![name.clone()], now)
         })
         .collect();
 
