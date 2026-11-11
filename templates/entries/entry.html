@@ -1,4 +1,4 @@
-<div class="entry {% if !entry.is_available %}unavailable{% endif %}" id="entry-{{ entry.id }}">
+<div class="entry {% if !entry.is_available %}unavailable{% endif %}" id="entry-{{ entry.id }}" data-search="{{ entry.title }} {{ entry.url }} {{ entry.description.as_deref().unwrap_or("") }} {{ entry.tags.join(" ") }}">
     <div class="entry-header">
         <div class="entry-title">
             <a href="{{ entry.url }}" target="_blank" rel="noopener noreferrer"
