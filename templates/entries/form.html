@@ -61,8 +61,8 @@
                 <label for="interval">Interval</label>
                 <select id="interval" name="interval" required>
                     <option value="hours" {% if let Some(e) = entry %}{% if e.interval.to_string() == "hours" %}selected{% endif %}{% endif %}>Hours</option>
-                    <option value="days" {% if let Some(e) = entry %}{% if e.interval.to_string() == "days" %}selected{% endif %}{% else %}selected{% endif %}>Days</option>
-                    <option value="weeks" {% if let Some(e) = entry %}{% if e.interval.to_string() == "weeks" %}selected{% endif %}{% endif %}>Weeks</option>
+                    <option value="days" {% if let Some(e) = entry %}{% if e.interval.to_string() == "days" %}selected{% endif %}{% endif %}>Days</option>
+                    <option value="weeks" {% if let Some(e) = entry %}{% if e.interval.to_string() == "weeks" %}selected{% endif %}{% else %}selected{% endif %}>Weeks</option>
                     <option value="months" {% if let Some(e) = entry %}{% if e.interval.to_string() == "months" %}selected{% endif %}{% endif %}>Months</option>
                     <option value="years" {% if let Some(e) = entry %}{% if e.interval.to_string() == "years" %}selected{% endif %}{% endif %}>Years</option>
                 </select>
