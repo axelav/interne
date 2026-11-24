@@ -2,6 +2,8 @@
 
 Spaced repetition for websites. Track URLs you want to revisit periodically, mark them read, see them again when they're due.
 
+New links default to a one-week revisit interval. Choose a shorter or longer interval in the Add Link form.
+
 ## Stack
 
 - **Rust 1.94 + Axum** — language and web framework
