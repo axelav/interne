@@ -117,3 +117,152 @@ async fn tag_cloud_has_inline_styles() {
     assert!(html.contains("font-size:"));
     assert!(html.contains("hsl("));
 }
+
+#[tokio::test]
+async fn tag_search_matches_literal_prefixes_in_the_users_own_vocabulary() {
+    let app = TestApp::new().await;
+    let (_, owner) = app.create_user("Owner").await;
+    let owner_cookie = app.login(&owner).await;
+    let (_, other) = app.create_user("Other").await;
+    let other_cookie = app.login(&other).await;
+
+    let owner_entry =
+        "url=https%3A%2F%2Fexample.com&title=Mine&duration=1&interval=weeks&tags=r_own%2Crust";
+    let other_entry =
+        "url=https%3A%2F%2Fexample.net&title=Theirs&duration=1&interval=weeks&tags=r_other";
+    for (body, cookie) in [(owner_entry, &owner_cookie), (other_entry, &other_cookie)] {
+        let resp = app.post_form("/entries", body, Some(cookie)).await;
+        common::assert_redirect(&resp, "/");
+    }
+
+    let resp = app
+        .post_form("/api/tags/search", "q=+R_+", Some(&owner_cookie))
+        .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(html.contains(">r_own<"));
+    assert!(!html.contains(">rust<"));
+    assert!(!html.contains(">r_other<"));
+}
+
+#[tokio::test]
+async fn tag_search_keeps_matching_as_a_greek_prefix_grows() {
+    let app = TestApp::new().await;
+    let (_, user) = app.create_user("Tag Owner").await;
+    let cookie = app.login(&user).await;
+    let tag: String = url::form_urlencoded::byte_serialize("ΜΟΥΣΙΚΗ".as_bytes()).collect();
+    let body =
+        format!("url=https%3A%2F%2Fexample.com&title=Link&duration=1&interval=weeks&tags={tag}");
+    let resp = app.post_form("/entries", &body, Some(&cookie)).await;
+    common::assert_redirect(&resp, "/");
+
+    for prefix in ["ΜΟΥ", "ΜΟΥΣ", "ΜΟΥΣΙ"] {
+        let query: String = url::form_urlencoded::byte_serialize(prefix.as_bytes()).collect();
+        let resp = app
+            .post_form("/api/tags/search", &format!("q={query}"), Some(&cookie))
+            .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(body_string(resp).await.contains(">μουσικη<"), "{prefix}");
+    }
+}
+
+#[tokio::test]
+async fn tag_search_ranks_the_exact_match_before_the_limit() {
+    let app = TestApp::new().await;
+    let (_, user) = app.create_user("Tag Owner").await;
+    let cookie = app.login(&user).await;
+    let tags = "σ,ς0,ς1,ς2,ς3,ς4,ς5,ς6,ς7,ς8,ς9";
+    let tags: String = url::form_urlencoded::byte_serialize(tags.as_bytes()).collect();
+    let body =
+        format!("url=https%3A%2F%2Fexample.com&title=Link&duration=1&interval=weeks&tags={tags}");
+    let resp = app.post_form("/entries", &body, Some(&cookie)).await;
+    common::assert_redirect(&resp, "/");
+
+    let resp = app
+        .post_form("/api/tags/search", "q=+%CE%A3+", Some(&cookie))
+        .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    let exact = html.find(">σ<").expect("exact tag is missing");
+    assert!(exact < html.find(">ς0<").expect("first variant is missing"));
+    assert_eq!(html.matches("role=\"option\"").count(), 10);
+}
+
+#[tokio::test]
+async fn tag_search_filters_existing_tags_before_limiting_suggestions() {
+    let app = TestApp::new().await;
+    let (_, user) = app.create_user("Tag Owner").await;
+    let cookie = app.login(&user).await;
+    let body = "url=https%3A%2F%2Fexample.com&title=Link&duration=1&interval=weeks&tags=r,r01,r02,r03,r04,r05,r06,r07,r08,r09,r10,r11";
+    let resp = app.post_form("/entries", body, Some(&cookie)).await;
+    common::assert_redirect(&resp, "/");
+
+    let resp = app
+        .post_form(
+            "/api/tags/search",
+            "q=r&exclude=%C2%85R01+,r02,r03,r04,r05,r06,r07,r08,r09,r10",
+            Some(&cookie),
+        )
+        .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(html.contains(">r<"));
+    assert!(html.contains(">r11<"));
+    assert!(!html.contains(">r01<"));
+}
+
+#[tokio::test]
+async fn tag_search_only_offers_names_that_the_form_can_save() {
+    let app = TestApp::new().await;
+    let (_, user) = app.create_user("Tag Owner").await;
+    let cookie = app.login(&user).await;
+    let body = "url=https%3A%2F%2Fexample.com&title=Link&duration=1&interval=weeks&tags=research";
+    let resp = app.post_form("/entries", body, Some(&cookie)).await;
+    common::assert_redirect(&resp, "/");
+
+    // A legacy import can store names the single-line, comma-separated field cannot.
+    sqlx::query("INSERT INTO tags (id, name) VALUES ('imported-comma', 'research, methods'), ('imported-linebreak', 'research' || char(10) || 'methods')")
+        .execute(&app.db)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO entry_tags (entry_id, tag_id) SELECT id, 'imported-comma' FROM entries UNION ALL SELECT id, 'imported-linebreak' FROM entries")
+        .execute(&app.db)
+        .await
+        .unwrap();
+
+    let resp = app
+        .post_form("/api/tags/search", "q=research", Some(&cookie))
+        .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(html.contains(">research<"));
+    assert!(!html.contains("methods"));
+}
+
+#[tokio::test]
+async fn tag_search_requires_a_full_session() {
+    let app = TestApp::new().await;
+    let (_, invite_code) = app.create_legacy_user("Legacy User").await;
+    let migration_cookie = app.legacy_login(&invite_code).await;
+
+    for cookie in [None, Some(migration_cookie.as_str())] {
+        let resp = app.post_form("/api/tags/search", "q=r", cookie).await;
+        common::assert_redirect(&resp, "/login");
+    }
+}
+
+#[tokio::test]
+async fn tag_search_returns_no_suggestions_for_empty_or_unmatched_queries() {
+    let app = TestApp::new().await;
+    let (_, user) = app.create_user("Tag Owner").await;
+    let cookie = app.login(&user).await;
+    let body = "url=https%3A%2F%2Fexample.com&title=Link&duration=1&interval=weeks&tags=rust";
+    let resp = app.post_form("/entries", body, Some(&cookie)).await;
+    common::assert_redirect(&resp, "/");
+
+    for body in ["", "q=+", "q=zzz"] {
+        let resp = app.post_form("/api/tags/search", body, Some(&cookie)).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(body_string(resp).await.trim().is_empty());
+    }
+}

@@ -71,13 +71,20 @@
 
         <div class="form-group">
             <label for="tags">Tags</label>
-            <input
-                type="text"
-                id="tags"
-                name="tags"
-                value="{{ tags_string }}"
-                placeholder="comma, separated, tags"
-            >
+            <div class="tags-autocomplete">
+                <input
+                    type="text"
+                    id="tags"
+                    name="tags"
+                    value="{{ tags_string }}"
+                    placeholder="comma, separated, tags"
+                    role="combobox"
+                    aria-autocomplete="list"
+                    aria-controls="tag-suggestions"
+                    aria-expanded="false"
+                >
+                <div id="tag-suggestions" role="listbox" aria-label="Tag suggestions" hidden></div>
+            </div>
         </div>
 
         <div class="form-group">
@@ -195,4 +202,5 @@
     update();
 })();
 </script>
+<script src="/static/tag-autocomplete.js?v={{ static_hash }}" defer></script>
 {% endblock %}

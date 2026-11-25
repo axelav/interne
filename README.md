@@ -4,6 +4,11 @@ Spaced repetition for websites. Track URLs you want to revisit periodically, mar
 
 New links default to a one-week revisit interval. Choose a shorter or longer interval in the Add Link form.
 
+When adding or editing a link, type in any comma-separated segment of the Tags
+field to find matching tags from your own links. Tags already in another
+segment are not suggested, and an exact match appears first. Click a suggestion
+or use ↑/↓ and Enter to select it. Escape closes the list without changing the tags.
+
 ## Stack
 
 - **Rust 1.94 + Axum** — language and web framework
@@ -31,11 +36,11 @@ src/
     ├── auth.rs          # GitHub OAuth, legacy linking, and logout
     ├── entries.rs       # CRUD, visit, availability logic
     ├── collections.rs   # CRUD, join/leave, member management
-    ├── tags.rs          # tag cloud + per-tag entry views
+    ├── tags.rs          # tag cloud, per-tag entry views, and tag suggestions
     └── export.rs        # JSON export
 
 templates/               # Askama HTML templates
-static/                  # CSS + htmx
+static/                  # CSS, htmx, and tag autocomplete
 migrations/              # SQLite schema
 tests/                   # integration tests (TestApp + in-memory SQLite)
 build.rs                 # static asset cache-busting hash
