@@ -1,17 +1,30 @@
 use askama::Template;
 use axum::{
     Router,
-    extract::{Path, State},
+    extract::{Path, Query, State},
+    http::header,
     response::{Html, IntoResponse},
     routing::get,
 };
 use chrono::Utc;
+use serde::Deserialize;
 
 use crate::AppState;
 use crate::auth::AuthUser;
 use crate::error::AppError;
 use crate::models::User;
 use crate::routes::entries::{EntryView, EntryWithCount, build_entry_view};
+
+#[derive(Deserialize)]
+struct TagSearchParams {
+    q: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "tags/suggestions.html")]
+struct TagSuggestions {
+    names: Vec<String>,
+}
 
 struct TagWithCount {
     name: String,
@@ -99,6 +112,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/tags", get(list_tags))
         .route("/tags/{name}", get(show_tag))
+        .route("/api/tags/search", get(search_tags))
 }
 
 async fn list_tags(
@@ -178,4 +192,40 @@ async fn show_tag(
         user: Some(user),
     };
     Ok(Html(template.render()?))
+}
+
+async fn search_tags(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Query(params): Query<TagSearchParams>,
+) -> Result<impl IntoResponse, AppError> {
+    let prefix = params.q.as_deref().unwrap_or("").trim().to_lowercase();
+    let html = if prefix.is_empty() {
+        String::new()
+    } else {
+        let names = sqlx::query_scalar(
+            r#"
+            SELECT DISTINCT t.name
+            FROM tags t
+            JOIN entry_tags et ON et.tag_id = t.id
+            JOIN entries e ON e.id = et.entry_id
+            WHERE e.user_id = ? AND instr(t.name, ?) = 1
+              -- Only names representable in the single-line, comma-separated field.
+              AND instr(t.name, ',') = 0
+              AND instr(t.name, char(0)) = 0
+              AND instr(t.name, char(10)) = 0
+              AND instr(t.name, char(13)) = 0
+            ORDER BY t.name
+            LIMIT 10
+            "#,
+        )
+        .bind(&user.id)
+        .bind(&prefix)
+        .fetch_all(&state.db)
+        .await?;
+
+        TagSuggestions { names }.render()?
+    };
+
+    Ok(([(header::CACHE_CONTROL, "private, no-store")], Html(html)))
 }

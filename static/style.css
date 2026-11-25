@@ -318,6 +318,37 @@ textarea {
     color: #c0392b;
 }
 
+.tags-autocomplete {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+}
+
+#tag-suggestions {
+    position: absolute;
+    top: 100%;
+    inset-inline: 0;
+    z-index: 10;
+    max-height: 200px;
+    overflow-y: auto;
+    background: var(--white);
+    border: var(--border);
+    border-radius: 0 0 var(--radius) var(--radius);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+}
+
+#tag-suggestions [role="option"] {
+    padding: 0.5rem 0.625rem;
+    font-size: 0.9375rem;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+
+#tag-suggestions [role="option"]:hover,
+#tag-suggestions [aria-selected="true"] {
+    background: var(--gray-100);
+}
+
 button[type="submit"]:not(.link-button) {
     padding: 0.5rem 1.25rem;
     background: var(--black);
