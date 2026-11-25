@@ -115,6 +115,11 @@ client ID, client secret, and public base URL; secure cookies default to `true`.
 The multi-stage image stores SQLite in the mounted `./data/` directory. Configure
 the reverse proxy for port 3000. Never set `SECURE_COOKIES=false` in production.
 
+Outbound GitHub HTTPS uses reqwest's embedded WebPKI roots, not the operating
+system CA store. The eMudhra incident fixes are locked at `rustls-webpki 0.103.16`
+and `webpki-roots 1.0.10`; rebuild and redeploy after updating these dependencies.
+Updating `ca-certificates` alone does not fix an older application binary.
+
 ## Environment
 
 | Variable | Default | Description |
