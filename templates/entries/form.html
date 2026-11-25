@@ -23,7 +23,7 @@
             {% if entry.is_none() %}
             <div class="suggest-details">
                 <button type="button" class="link-button" id="suggest-details" aria-describedby="suggest-disclosure">Suggest details</button>
-                <p id="suggest-disclosure">Interne will fetch this URL and send a short excerpt of the public page to OpenAI to draft a description.</p>
+                <p id="suggest-disclosure">Interne will fetch this URL and send a short excerpt of the public page and names from your own tags to OpenAI to suggest a bookmark note and tags. Nothing is saved until you choose Save.</p>
                 <p id="suggest-status" role="status"></p>
             </div>
             {% endif %}
@@ -84,7 +84,7 @@
                     id="tags"
                     name="tags"
                     value="{{ tags_string }}"
-                    placeholder="comma, separated, tags"
+                    aria-describedby="tags-hint"
                     role="combobox"
                     aria-autocomplete="list"
                     aria-controls="tag-suggestions"
@@ -92,6 +92,7 @@
                 >
                 <div id="tag-suggestions" role="listbox" aria-label="Tag suggestions" hidden></div>
             </div>
+            <small id="tags-hint">Separate tags with commas.</small>
         </div>
 
         <div class="form-group">
@@ -213,7 +214,7 @@
 
     const url = form.elements.url;
     const status = document.getElementById('suggest-status');
-    const fields = [form.elements.title, ta];
+    const fields = [form.elements.title, ta, form.elements.tags];
     const edited = new Set(fields.filter(field => field.value !== ''));
     const suggested = new Set();
     let request;
@@ -269,10 +270,11 @@
             }
             const details = await reply.json();
             if (signal.aborted || url.value !== target) return;
+            const tags = Array.isArray(details.tags) ? details.tags.join(', ') : '';
             let applied = false;
             for (const field of fields) {
-                const value = details[field.name];
-                if (typeof value !== 'string' || edited.has(field)) continue;
+                const value = field.name === 'tags' ? tags : details[field.name];
+                if (!value || typeof value !== 'string' || edited.has(field)) continue;
                 field.value = value;
                 suggested.add(field);
                 showError(field.name, '');
@@ -280,7 +282,7 @@
             }
             update();
             status.textContent = details.warning || (applied ? 'Suggestions added. Review before saving.'
-                : (details.title || details.description ? 'No fields changed.' : 'No details found on that page.'));
+                : (details.title || details.description || tags ? 'No fields changed.' : 'No details found on that page.'));
         } catch {
             if (!signal.aborted && url.value === target) status.textContent = 'Could not suggest details.';
         }

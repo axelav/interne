@@ -449,13 +449,13 @@ struct SuggestEntry {
 
 async fn suggest_entry(
     State(state): State<AppState>,
-    _: AuthUser,
+    AuthUser(user): AuthUser,
     Json(form): Json<SuggestEntry>,
 ) -> Result<Json<crate::suggestions::Details>, AppError> {
     let suggestions = state.suggestions.ok_or(AppError::SuggestionsUnavailable)?;
     let url = parse_link_url(&form.url).map_err(|_| AppError::UnreadablePage)?;
     suggestions
-        .suggest(url)
+        .suggest(url, &state.db, &user.id)
         .await
         .map(Json)
         .map_err(|_| AppError::UnreadablePage)

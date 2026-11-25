@@ -49,6 +49,7 @@ struct Outbound {
 struct Fixture {
     app: Router,
     cookie: String,
+    db: sqlx::SqlitePool,
     origin: String,
     upstream: Arc<Outbound>,
     server: JoinHandle<()>,
@@ -91,6 +92,10 @@ impl Fixture {
                 Html("<title>Private title</title>Private page contents")
             }))
             .route("/no-title", get(|| async { Html("<p>How to repair a bicycle chain.</p>") }))
+            .route("/ai", get(|| async { Html("<title>Lecture</title><p>Artificial intelligence research.</p>") }))
+            .route("/invalid/{kind}", get(|axum::extract::Path(kind): axum::extract::Path<String>| async move {
+                Html(format!("<title>Usable title</title><p>Invalid {kind}</p>"))
+            }))
             .route("/title-only", get(|| async { Html("<title>Just a title</title><script>not evidence</script>") }))
             .route("/hidden-root", get(|| async {
                 Html("<html hidden><head><title>Public title</title></head><body><p>Unshown draft</p></body></html>")
@@ -389,10 +394,23 @@ impl Fixture {
             .route("/open-dialog", get(|| async {
                 Html("<title>Order status</title><dialog open>Order ready.</dialog>")
             }))
-            .route("/responses", post(|State(upstream): State<Arc<Outbound>>, headers: HeaderMap, Json(body): Json<Value>| async move {
-                let malformed = body["input"] == "Bad model reply fixture";
+            .route("/responses", post(|State(upstream): State<Arc<Outbound>>, headers: HeaderMap, Json(mut body): Json<Value>| async move {
+                let input: Value = serde_json::from_str(body["input"].as_str().unwrap()).unwrap();
+                let reply = match input["excerpt"].as_str().unwrap() {
+                    "Bad model reply fixture" => json!({}),
+                    "Invalid shape" => json!({"description": DESCRIPTION, "tags": "one, two"}),
+                    "Invalid delimiters" => json!({"description": DESCRIPTION, "tags": ["one,two", "bad\nlabel"]}),
+                    "Invalid description" => json!({"description": [123], "tags": ["cycling"]}),
+                    "Artificial intelligence research." => {
+                        let candidates = input["candidate_tags"].as_array().unwrap();
+                        let label = if candidates.iter().any(|tag| tag == "ai") { "ai" } else { "artificial intelligence" };
+                        json!({"description": "Artificial intelligence research notes.", "tags": [label]})
+                    }
+                    _ => json!({"description": DESCRIPTION, "tags": ["cycling"]}),
+                };
+                body["input"] = input;
                 upstream.provider.lock().unwrap().push((headers, body));
-                let text = if malformed { "{}".into() } else { json!({ "description": DESCRIPTION }).to_string() };
+                let text = reply.to_string();
                 Json(json!({
                     "status": "completed",
                     "output": [{"type": "message", "role": "assistant", "content": [{"type": "output_text", "text": text}]}]
@@ -412,28 +430,35 @@ impl Fixture {
             github: Arc::new(GitHubOAuthClient::new("fixture", "fixture").unwrap()),
         };
         let app = crate::build_app(db.clone(), false, auth, Some(suggestions)).await;
-        let now = chrono::Utc::now().to_rfc3339();
-        let user = sqlx::query_as(
-            "INSERT INTO users (id, name, github_user_id, github_login, created_at, updated_at) \
-             VALUES (?, 'Reader', '42', 'reader', ?, ?) RETURNING *",
-        )
-        .bind(uuid::Uuid::new_v4().to_string())
-        .bind(&now)
-        .bind(&now)
-        .fetch_one(&db)
-        .await
-        .unwrap();
-        let session = Session::new(None, Arc::new(SqliteStore::new(db)), None);
-        login_user(&session, &user).await.unwrap();
-        session.save().await.unwrap();
-        let cookie = format!("id={}", session.id().unwrap());
+        let cookie = Self::reader_cookie(&db, "42").await;
         Self {
             app,
             cookie,
+            db,
             origin,
             upstream,
             server,
         }
+    }
+
+    async fn reader_cookie(db: &sqlx::SqlitePool, identity: &str) -> String {
+        let now = chrono::Utc::now().to_rfc3339();
+        let user = sqlx::query_as(
+            "INSERT INTO users (id, name, github_user_id, github_login, created_at, updated_at) \
+             VALUES (?, 'Reader', ?, ?, ?, ?) RETURNING *",
+        )
+        .bind(uuid::Uuid::new_v4().to_string())
+        .bind(identity)
+        .bind(identity)
+        .bind(&now)
+        .bind(&now)
+        .fetch_one(db)
+        .await
+        .unwrap();
+        let session = Session::new(None, Arc::new(SqliteStore::new(db.clone())), None);
+        login_user(&session, &user).await.unwrap();
+        session.save().await.unwrap();
+        format!("id={}", session.id().unwrap())
     }
 
     async fn send(&self, request: Request<Body>) -> Response {
@@ -478,6 +503,32 @@ impl Fixture {
         assert_eq!(response.status(), StatusCode::OK);
         serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap()
     }
+
+    async fn save(&self, url: &str, title: &str, description: &str, tags: &str) {
+        let body = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("url", url)
+            .append_pair("title", title)
+            .append_pair("description", description)
+            .append_pair("tags", tags)
+            .append_pair("duration", "1")
+            .append_pair("interval", "weeks")
+            .finish();
+        let saved = self
+            .send(
+                Request::post("/entries")
+                    .header(header::COOKIE, &self.cookie)
+                    .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await;
+        assert_eq!(saved.headers()[header::LOCATION], "/");
+    }
+
+    async fn saved_counts(&self) -> (i64, i64, i64, i64) {
+        sqlx::query_as("SELECT (SELECT COUNT(*) FROM entries), (SELECT COUNT(*) FROM tags), (SELECT COUNT(*) FROM entry_tags), (SELECT COUNT(*) FROM visits)")
+            .fetch_one(&self.db).await.unwrap()
+    }
 }
 
 #[tokio::test]
@@ -493,6 +544,8 @@ async fn suggests_details_without_saving_or_replacing_the_original_target() {
     let details = fixture.details("/article").await;
     assert_eq!(details["title"], TITLE);
     assert_eq!(details["description"], DESCRIPTION);
+    assert_eq!(details["tags"], json!(["cycling"]));
+    assert_eq!(fixture.saved_counts().await, (0, 0, 0, 0));
     assert!(!fixture.get("/all").await.contains(&fixture.origin));
     {
         let pages = fixture.upstream.pages.lock().unwrap();
@@ -511,35 +564,99 @@ async fn suggests_details_without_saving_or_replacing_the_original_target() {
             panic!("expected one provider request")
         };
         assert_eq!(headers[header::AUTHORIZATION], "Bearer fixture-key");
-        assert_eq!(body["input"], DESCRIPTION);
+        assert_eq!(
+            body["input"],
+            json!({"excerpt": DESCRIPTION, "candidate_tags": []})
+        );
         assert_eq!(body["store"], false);
         assert!(!body.to_string().contains(&fixture.origin));
     }
 
-    let body: String = url::form_urlencoded::Serializer::new(String::new())
-        .append_pair("url", &url)
-        .append_pair("title", "My edited title")
-        .append_pair("description", "My edited description")
-        .append_pair("duration", "1")
-        .append_pair("interval", "weeks")
-        .finish();
-    let saved = fixture
-        .send(
-            Request::post("/entries")
-                .header(header::COOKIE, &fixture.cookie)
-                .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
-                .body(Body::from(body))
-                .unwrap(),
+    fixture
+        .save(
+            &url,
+            "My edited title",
+            "My edited description",
+            "custom-tag",
         )
         .await;
-    assert_eq!(saved.headers()[header::LOCATION], "/");
     let links = fixture.get("/all").await;
     assert!(links.contains(&format!("href=\"{url}\"")));
     assert!(links.contains("My edited title"));
     assert!(links.contains("My edited description"));
+    let tags = fixture.get("/tags").await;
+    assert!(tags.contains("custom-tag"));
+    assert!(!tags.contains("cycling"));
     assert!(links.contains("Never viewed"));
     assert!(!links.contains(TITLE));
     assert!(!links.contains(DESCRIPTION));
+}
+
+#[tokio::test]
+async fn only_the_requesting_readers_labels_reach_the_provider() {
+    let mut fixture = Fixture::new().await;
+    fixture
+        .save(
+            "https://first-private.example/one",
+            "First secret title",
+            "First secret notes",
+            "ai",
+        )
+        .await;
+    let second = Fixture::reader_cookie(&fixture.db, "43").await;
+    let first = std::mem::replace(&mut fixture.cookie, second);
+    assert_eq!(
+        fixture.details("/ai").await["tags"],
+        json!(["artificial intelligence"])
+    );
+    fixture
+        .save(
+            "https://second-private.example/two",
+            "Second secret title",
+            "Second secret notes",
+            "botany",
+        )
+        .await;
+    let before = fixture.saved_counts().await;
+    fixture.details("/ai").await;
+    fixture.cookie = first;
+    assert_eq!(fixture.details("/ai").await["tags"], json!(["ai"]));
+    assert_eq!(fixture.saved_counts().await, before);
+    let requests = fixture.upstream.provider.lock().unwrap();
+    assert_eq!(requests.len(), 3);
+    for ((_, body), labels) in requests
+        .iter()
+        .zip([json!([]), json!(["botany"]), json!(["ai"])])
+    {
+        assert_eq!(
+            body["input"],
+            json!({"excerpt": "Artificial intelligence research.", "candidate_tags": labels})
+        );
+        let request = body.to_string();
+        for private in [
+            "first-private.example",
+            "second-private.example",
+            "First secret",
+            "Second secret",
+        ] {
+            assert!(!request.contains(private));
+        }
+    }
+}
+
+#[tokio::test]
+async fn malformed_provider_fields_do_not_discard_usable_siblings() {
+    let fixture = Fixture::new().await;
+    for kind in ["shape", "delimiters"] {
+        let details = fixture.details(&format!("/invalid/{kind}")).await;
+        assert_eq!(details["title"], "Usable title");
+        assert_eq!(details["description"], DESCRIPTION);
+        assert_eq!(details["tags"], json!([]));
+    }
+    let details = fixture.details("/invalid/description").await;
+    assert_eq!(details["title"], "Usable title");
+    assert!(details["description"].is_null());
+    assert_eq!(details["tags"], json!(["cycling"]));
 }
 
 #[tokio::test]
@@ -582,10 +699,8 @@ async fn returns_usable_details_even_when_the_other_field_cannot_be_suggested() 
     let details = fixture.details("/malformed-reply").await;
     assert_eq!(details["title"], "Usable title");
     assert!(details["description"].is_null());
-    assert_eq!(
-        details["warning"],
-        "Description suggestions are unavailable."
-    );
+    assert_eq!(details["tags"], json!([]));
+    assert!(details["warning"].as_str().is_some_and(|s| !s.is_empty()));
 }
 
 #[tokio::test]
@@ -594,7 +709,7 @@ async fn preserves_declared_title_and_excerpt_encoding() {
     let details = fixture.details("/legacy-charset").await;
     assert_eq!(details["title"], "Café");
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "About cafés"
     );
 }
@@ -614,7 +729,7 @@ async fn decodes_titles_and_provider_text_using_the_leading_xml_declaration() {
         let details = fixture.details(&format!("/xml-charset/{kind}")).await;
         assert_eq!(details["title"], "Café", "{kind}");
         assert_eq!(
-            fixture.upstream.provider.lock().unwrap().pop().unwrap().1["input"],
+            fixture.upstream.provider.lock().unwrap().pop().unwrap().1["input"]["excerpt"],
             "About cafés",
             "{kind}"
         );
@@ -627,7 +742,7 @@ async fn recovers_prices_from_undeclared_legacy_html() {
     let details = fixture.details("/undeclared-legacy").await;
     assert_eq!(details["title"], "Tickets £10");
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "Entry costs €12."
     );
 }
@@ -644,7 +759,7 @@ async fn accepts_http_parameter_tokens_without_sniffing_non_html() {
     assert_eq!(plain.status(), StatusCode::UNPROCESSABLE_ENTITY);
     let requests = fixture.upstream.provider.lock().unwrap();
     assert_eq!(requests.len(), 1);
-    assert_eq!(requests[0].1["input"], "About cafés");
+    assert_eq!(requests[0].1["input"]["excerpt"], "About cafés");
 }
 
 #[tokio::test]
@@ -653,7 +768,7 @@ async fn uses_the_document_title_even_when_declared_in_the_body() {
     let details = fixture.details("/streamed-title").await;
     assert_eq!(details["title"], "Streamed article title");
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "How to repair a bicycle chain."
     );
 }
@@ -665,7 +780,7 @@ async fn sends_bounded_evidence_from_prose_without_spaces() {
     assert_eq!(details["description"], DESCRIPTION);
     let provider = fixture.upstream.provider.lock().unwrap();
     assert_eq!(
-        provider[0].1["input"],
+        provider[0].1["input"]["excerpt"],
         "自転車の修理。".repeat(285) + "自転車の…"
     );
 }
@@ -676,7 +791,7 @@ async fn reads_charset_declared_in_html_without_transport_charset() {
     let details = fixture.details("/meta-charset").await;
     assert_eq!(details["title"], "Café");
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "About cafés"
     );
 }
@@ -687,7 +802,7 @@ async fn reads_whitespace_and_quotes_in_legacy_html_charset_pragma() {
     let details = fixture.details("/pragma-charset").await;
     assert_eq!(details["title"], "Café");
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "About cafés"
     );
 }
@@ -714,7 +829,7 @@ async fn accepts_chunk_framing_but_rejects_additional_transfer_codings() {
     let details = fixture.details("/chunked").await;
     assert_eq!(details["title"], "Garden");
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "How to plant herbs."
     );
 }
@@ -734,7 +849,7 @@ async fn preserves_inline_words_and_separates_blocks_in_the_excerpt() {
     let fixture = Fixture::new().await;
     fixture.details("/inline-text").await;
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         concat!(
             "Version 1.2 is supported. See the guide. Read it first. Ingredients Flour ",
             "More resources Find a guide Recipes. Memory capacities (GB) 16 32 ",
@@ -751,7 +866,7 @@ async fn embeds_separate_values_without_fetching_resources_or_sending_their_fall
     let fixture = Fixture::new().await;
     fixture.details("/embedded-resources").await;
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "Memory: 16 32 GB. Range: 10 20 mm. Read the printed code. Sizes: 6 8 Wide Not yet paid"
     );
     assert!(fixture.upstream.pages.lock().unwrap().is_empty());
@@ -762,7 +877,7 @@ async fn only_the_first_initially_open_disclosure_in_each_tree_and_group_sends_i
     let fixture = Fixture::new().await;
     fixture.details("/disclosure-groups").await;
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "Pickup Standard Five days. Express Returns Free. Staff Local Today. Bag Box First."
     );
 }
@@ -789,7 +904,7 @@ async fn bounds_tag_attributes_without_treating_quoted_text_as_markup() {
     let details = fixture.details("/catalogue-page").await;
     assert_eq!(details["title"], "Catalogue");
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "The catalogue lists seasonal herbs."
     );
 }
@@ -807,7 +922,7 @@ async fn bounds_formatting_work_without_disabling_ordinary_formatted_pages() {
     let provider = fixture.upstream.provider.lock().unwrap();
     assert_eq!(provider.len(), 1);
     assert!(
-        provider[0].1["input"]
+        provider[0].1["input"]["excerpt"]
             .as_str()
             .unwrap()
             .starts_with("Version 1.2 is supported.")
@@ -826,7 +941,7 @@ async fn enforces_document_budget_before_calling_the_provider() {
     let details = fixture.details("/catalogue-page").await;
     assert_eq!(details["title"], "Catalogue");
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "The catalogue lists seasonal herbs."
     );
 }
@@ -847,7 +962,7 @@ async fn sends_displayed_control_labels_as_separate_values() {
     let fixture = Fixture::new().await;
     fixture.details("/control-text").await;
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         concat!(
             "Available capacities 16.5 32 Memory 64 GB 128 GB 256 GB Available widths (mm): 16 32 ",
             "Lengths: 16 or 32 Apply Clear 16 32 Choose capacity GB."
@@ -860,7 +975,7 @@ async fn unsupported_math_does_not_turn_into_different_numbers() {
     let fixture = Fixture::new().await;
     fixture.details("/equation").await;
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "Measurements Stir until smooth."
     );
 }
@@ -870,7 +985,7 @@ async fn omits_expressions_that_cannot_fit_in_the_excerpt() {
     let fixture = Fixture::new().await;
     fixture.details("/long-formula").await;
     let provider = fixture.upstream.provider.lock().unwrap();
-    let evidence = provider[0].1["input"].as_str().unwrap();
+    let evidence = provider[0].1["input"]["excerpt"].as_str().unwrap();
     assert!(evidence.len() <= 6000);
     assert!(evidence.ends_with(" Measured. Last value.…"));
 }
@@ -885,7 +1000,7 @@ async fn clipped_scripts_omit_only_the_expression_they_attach_to() {
     ] {
         fixture.details(path).await;
         assert_eq!(
-            fixture.upstream.provider.lock().unwrap().pop().unwrap().1["input"],
+            fixture.upstream.provider.lock().unwrap().pop().unwrap().1["input"]["excerpt"],
             "Measured. ".repeat(597) + ending,
             "{path}"
         );
@@ -918,7 +1033,7 @@ async fn a_cutoff_in_a_formula_preserves_unspaced_sentences() {
     fixture.details("/unspaced-formula").await;
     let provider = fixture.upstream.provider.lock().unwrap();
     assert_eq!(
-        provider[0].1["input"],
+        provider[0].1["input"]["excerpt"],
         "測定しました。".repeat(285) + "完了。…"
     );
 }
@@ -928,7 +1043,10 @@ async fn an_empty_script_does_not_consume_the_excerpt_budget() {
     let fixture = Fixture::new().await;
     fixture.details("/empty-script-at-cutoff").await;
     let provider = fixture.upstream.provider.lock().unwrap();
-    assert_eq!(provider[0].1["input"], "Measured. ".repeat(599) + "Done!!!");
+    assert_eq!(
+        provider[0].1["input"]["excerpt"],
+        "Measured. ".repeat(599) + "Done!!!"
+    );
 }
 
 #[tokio::test]
@@ -936,7 +1054,7 @@ async fn sends_listbox_rows_and_ruby_base_text_without_changing_their_meaning() 
     let fixture = Fixture::new().await;
     fixture.details("/listbox-and-ruby").await;
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "Stock Available Ready Year: 1446. 東京駅"
     );
 }
@@ -946,7 +1064,7 @@ async fn collapsed_selects_supply_only_their_initially_selected_label() {
     let fixture = Fixture::new().await;
     fixture.details("/selected-options").await;
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         concat!(
             "First: Paid Second: Overdue Default: Ready Picker: Current Group: On hold ",
             "List: Shown Stock: stock Basil Wrapped: Not paid In stock Basil"
@@ -959,7 +1077,7 @@ async fn multiselects_send_the_displayed_menu_label_or_listbox_rows() {
     let fixture = Fixture::new().await;
     fixture.details("/multiselect-sizes").await;
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "Menu: Approved Rows: Draft Approved Picker: Not paid Zero: Early Late Invalid: Low High Image: available Overflow: Approved"
     );
 }
@@ -969,7 +1087,7 @@ async fn cutoff_marker_does_not_cut_an_already_closed_exponent() {
     let fixture = Fixture::new().await;
     fixture.details("/formula-at-cutoff").await;
     let provider = fixture.upstream.provider.lock().unwrap();
-    let evidence = provider[0].1["input"].as_str().unwrap();
+    let evidence = provider[0].1["input"]["excerpt"].as_str().unwrap();
     assert!(evidence.len() <= 6000);
     assert!(evidence.ends_with(" Measured. Observation:…"));
 }
@@ -979,7 +1097,7 @@ async fn marks_a_clipped_quantity_as_incomplete() {
     let fixture = Fixture::new().await;
     fixture.details("/long-quantity").await;
     let provider = fixture.upstream.provider.lock().unwrap();
-    let evidence = provider[0].1["input"].as_str().unwrap();
+    let evidence = provider[0].1["input"]["excerpt"].as_str().unwrap();
     assert!(evidence.len() <= 6000);
     assert!(evidence.ends_with(" Measured. Amount:…"));
 }
@@ -996,7 +1114,7 @@ async fn closed_native_panels_do_not_reach_the_provider() {
 
     fixture.details("/open-dialog").await;
     assert_eq!(
-        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
         "Order ready."
     );
 }

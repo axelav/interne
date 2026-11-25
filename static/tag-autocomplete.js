@@ -74,6 +74,7 @@
         }
         segment = currentSegment();
         dismiss();
+        input.dispatchEvent(new Event('input', { bubbles: true }));
     }
 
     input.addEventListener('input', refresh);
