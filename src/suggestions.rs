@@ -115,17 +115,32 @@ impl LinkSuggestions {
             tokio::time::timeout_at(deadline.into(), page::fetch(&self.0.pages, url, deadline))
                 .await
                 .map_err(|_| PageReadError::Timeout)??;
+        let (title, excerpt) = match page {
+            page::Page::Read { title, excerpt } => (title, excerpt),
+            page::Page::Metadata { title, description } => {
+                tracing::info!(
+                    reason = "markup_limit",
+                    "Using page metadata for suggestions"
+                );
+                return Ok(Details {
+                    title,
+                    description,
+                    warning: Some("Only page metadata was available. Review before saving."),
+                    ..Details::default()
+                });
+            }
+        };
         let mut details = Details {
-            title: page.title,
+            title,
             ..Details::default()
         };
-        if page.excerpt.is_empty() {
+        if excerpt.is_empty() {
             return Ok(details);
         }
 
         let candidates = tag_candidates(db, user_id).await;
         let input = DraftInput {
-            excerpt: &page.excerpt,
+            excerpt: &excerpt,
             candidate_tags: candidates.as_deref().unwrap_or_default(),
         };
         match self.draft(&input).await {

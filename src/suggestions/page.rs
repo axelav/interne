@@ -1,5 +1,6 @@
 mod document;
 mod markup;
+mod metadata;
 
 use std::{
     cell::LazyCell,
@@ -36,9 +37,15 @@ const EXCERPT_CUTOFF: &str = "…";
 
 static PAGE_PARSE_SLOTS: Semaphore = Semaphore::const_new(2);
 
-pub(super) struct Page {
-    pub title: Option<String>,
-    pub excerpt: String,
+pub(super) enum Page {
+    Read {
+        title: Option<String>,
+        excerpt: String,
+    },
+    Metadata {
+        title: Option<String>,
+        description: Option<String>,
+    },
 }
 
 pub(super) fn client() -> reqwest::ClientBuilder {
@@ -260,9 +267,21 @@ fn parse(
         .or(transport_encoding)
     {
         Some(encoding) => encoding.decode(bytes).0,
-        None => match html_encoding(bytes, &budget)? {
-            Some(encoding) => encoding.decode(bytes).0,
-            None => match std::str::from_utf8(bytes) {
+        None => match html_encoding(bytes, &budget) {
+            Ok(Some(encoding)) => encoding.decode(bytes).0,
+            Err(error @ PageReadError::MarkupLimit) => {
+                // The charset prescan itself hit the guard. Keep only complete
+                // metadata before any non-ASCII byte or encoding shift.
+                let prefix = &bytes[..bytes.len().min(HTML_CHARSET_SNIFF_BYTES)];
+                let end = prefix
+                    .iter()
+                    .position(|&b| !b.is_ascii() || matches!(b, 0 | 0x0e | 0x0f | 0x1b))
+                    .unwrap_or(prefix.len());
+                let text = std::str::from_utf8(&prefix[..end]).map_err(|_| error)?;
+                return metadata::recover(text, deadline)?.ok_or(error);
+            }
+            Err(error) => return Err(error),
+            Ok(None) => match std::str::from_utf8(bytes) {
                 Ok(text) => text.into(),
                 // Undeclared legacy HTML commonly uses Windows-1252. Do not
                 // manufacture replacement characters for its non-UTF-8 bytes.
@@ -270,8 +289,13 @@ fn parse(
             },
         },
     };
-    let document = budget.parse(&html)?;
-    Ok(extract(&document))
+    match budget.parse(&html) {
+        Ok(document) => Ok(extract(&document)),
+        Err(PageReadError::MarkupLimit) => {
+            metadata::recover(&html, deadline)?.ok_or(PageReadError::MarkupLimit)
+        }
+        Err(error) => Err(error),
+    }
 }
 
 fn html_encoding(
@@ -598,7 +622,7 @@ fn extract(document: &Html) -> Page {
             }
         }
     }
-    Page {
+    Page::Read {
         title,
         excerpt: excerpt.value,
     }

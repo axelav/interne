@@ -44,7 +44,7 @@ impl Budget {
 
     pub(super) fn parse(&self, html: &str) -> Result<Html, PageReadError> {
         self.before_deadline()?;
-        markup::check(html).map_err(|()| PageReadError::MarkupLimit)?;
+        markup::check(html).map_err(|_| PageReadError::MarkupLimit)?;
         self.before_deadline()?;
         // TreeSink callbacks cannot return errors. Unwind only to this local
         // boundary, before an over-budget operation reaches the real sink.

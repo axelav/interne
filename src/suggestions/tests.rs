@@ -114,8 +114,12 @@ impl Fixture {
                 ))
             }))
             .route("/malformed-reply", get(|| async { Html("<title>Usable title</title><p>Bad model reply fixture</p>") }))
-            .route("/too-large", get(|| async { Html("text".repeat(140_000)) }))
-            .route("/refused", get(|| async { (StatusCode::FORBIDDEN, "private refusal body") }))
+            .route("/too-large", get(|| async {
+                Html(format!("<title>Do not suggest</title><meta name=description content='Too large'><ul>{}</ul>", "<li>Basil</li>".repeat(45_000)))
+            }))
+            .route("/refused", get(|| async {
+                (StatusCode::FORBIDDEN, Html("<title>Do not suggest</title><meta name=description content='private refusal body'>"))
+            }))
             .route("/field-notes", get(|| async {
                 Html(format!(
                     "<title>Field notes</title><div hidden>{}</div><p>Seasonal planting notes.</p>",
@@ -302,8 +306,30 @@ impl Fixture {
             .route("/equation", get(|| async {
                 Html("<p>Measurements<math><mfrac><mn>1</mn><mn>2</mn></mfrac><mi>cup</mi></math>Stir until smooth.</p>")
             }))
-            .route("/structured-catalog", get(|| async {
-                Html(format!("<title>Plant catalogue</title><ul>{}</ul>", "<li>Chamomile</li>".repeat(4200)))
+            .route("/structured-catalog/{kind}", get(move |axum::extract::Path(kind): axum::extract::Path<String>, State(upstream): State<Arc<Outbound>>, headers: HeaderMap| async move {
+                record_page(&kind, headers, &upstream);
+                let head = match kind.as_str() {
+                    "both" => "<title>Plants &amp; herbs</title><META content='Grow A &gt; B' NAME=description>".into(),
+                    "no-metadata" => "<meta name=author content='Not a description'>".into(),
+                    "decoys" => concat!(
+                        "<!-- <title>Comment</title><meta name=description content=comment> -->",
+                        "<script>const s = '<title>Script</title><meta name=description content=script>';</script>",
+                        "<template><title>Template</title><meta name=description content=template></template>",
+                        "</head><body><title>Body</title><meta name=description content=body>",
+                    ).into(),
+                    "clipped-title" => format!("<meta name=description content='Plant guide'><title>Useful start{}end</title>", " ".repeat(16 * 1024)),
+                    "clipped-meta" => format!("<title>Plant guide</title><meta name=description content='Useful start{}end'>", " ".repeat(16 * 1024)),
+                    "late" => format!("{}<title>Late</title><meta name=description content=late>", " ".repeat(16 * 1024)),
+                    _ => unreachable!(),
+                };
+                Html(format!("<head>{head}</head><ul>{}</ul>", "<li>Chamomile</li>".repeat(4200)))
+            }))
+            .route("/complex-charset-prescan", get(|| async {
+                let html = format!(
+                    "<title>Plants &amp; herbs</title><meta name=description content='Soil notes'><div {}>",
+                    (0..140).map(|n| format!("a{n} ")).collect::<String>()
+                );
+                ([(header::CONTENT_TYPE, "text/html")], html)
             }))
             .route("/catalogue-metadata", get(|| async {
                 use std::fmt::Write;
@@ -946,22 +972,57 @@ async fn only_the_first_initially_open_disclosure_in_each_tree_and_group_sends_i
 }
 
 #[tokio::test]
-async fn rejects_pages_over_the_markup_budget_without_sending_them_to_openai() {
+async fn complex_pages_return_only_complete_head_metadata_without_a_second_fetch_or_model_call() {
     let fixture = Fixture::new().await;
-    let response = fixture
-        .suggest(&format!("{}/structured-catalog", fixture.origin), true)
-        .await;
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    for (kind, title, description) in [
+        ("both", Some("Plants & herbs"), Some("Grow A > B")),
+        ("clipped-title", None, Some("Plant guide")),
+        ("clipped-meta", Some("Plant guide"), None),
+    ] {
+        let details = fixture
+            .details(&format!("/structured-catalog/{kind}"))
+            .await;
+        assert_eq!(details["title"], json!(title), "{kind}");
+        assert_eq!(details["description"], json!(description), "{kind}");
+        assert_eq!(details["tags"], json!([]), "{kind}");
+    }
+    for kind in ["no-metadata", "decoys", "late"] {
+        let url = format!("{}/structured-catalog/{kind}", fixture.origin);
+        assert_eq!(
+            fixture.suggest(&url, true).await.status(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{kind}"
+        );
+    }
+    let details = fixture.details("/complex-charset-prescan").await;
+    assert_eq!(details["title"], "Plants & herbs");
+    assert_eq!(details["description"], "Soil notes");
+    assert_eq!(details["tags"], json!([]));
+    let pages = fixture.upstream.pages.lock().unwrap();
+    assert_eq!(
+        pages
+            .iter()
+            .map(|(path, _)| path.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "both",
+            "clipped-title",
+            "clipped-meta",
+            "no-metadata",
+            "decoys",
+            "late"
+        ]
+    );
     assert!(fixture.upstream.provider.lock().unwrap().is_empty());
 }
 
 #[tokio::test]
 async fn bounds_tag_attributes_without_treating_quoted_text_as_markup() {
     let fixture = Fixture::new().await;
-    let response = fixture
-        .suggest(&format!("{}/catalogue-metadata", fixture.origin), true)
-        .await;
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let details = fixture.details("/catalogue-metadata").await;
+    assert_eq!(details["title"], "Catalogue");
+    assert!(details["description"].is_null());
+    assert_eq!(details["tags"], json!([]));
     assert!(fixture.upstream.provider.lock().unwrap().is_empty());
 
     let details = fixture.details("/catalogue-page").await;
@@ -975,10 +1036,10 @@ async fn bounds_tag_attributes_without_treating_quoted_text_as_markup() {
 #[tokio::test]
 async fn bounds_formatting_work_without_disabling_ordinary_formatted_pages() {
     let fixture = Fixture::new().await;
-    let response = fixture
-        .suggest(&format!("{}/formatting-catalogue", fixture.origin), true)
-        .await;
-    assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    let details = fixture.details("/formatting-catalogue").await;
+    assert_eq!(details["title"], "Catalogue");
+    assert!(details["description"].is_null());
+    assert_eq!(details["tags"], json!([]));
     assert!(fixture.upstream.provider.lock().unwrap().is_empty());
 
     fixture.details("/inline-text").await;

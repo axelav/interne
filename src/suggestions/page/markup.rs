@@ -9,7 +9,8 @@ const FORMATTING: [&[u8]; 14] = [
     b"strong", b"tt", b"u",
 ];
 
-pub(super) fn check(html: &str) -> Result<(), ()> {
+/// Returns the byte offset of the first markup start that exceeds the budget.
+pub(super) fn check(html: &str) -> Result<(), usize> {
     // Check every plausible tag start, even inside comments or raw text. That
     // avoids having to reproduce the tree builder's tokenizer mode changes.
     // Charge overlapping lookahead so repeated starts cannot make this pass
@@ -18,15 +19,15 @@ pub(super) fn check(html: &str) -> Result<(), ()> {
     let mut formatting = FormattingBudget::default();
     for (count, (offset, _)) in html.match_indices('<').enumerate() {
         if count == MAX_MARKUP_STARTS {
-            return Err(());
+            return Err(offset);
         }
         let rest = &html.as_bytes()[offset + 1..];
         let tag = rest.strip_prefix(b"/").unwrap_or(rest);
         if tag.first().is_some_and(u8::is_ascii_alphabetic) {
-            let scan = scan_tag(tag, remaining)?;
+            let scan = scan_tag(tag, remaining).map_err(|()| offset)?;
             remaining -= scan.bytes;
             if rest.len() == tag.len() {
-                formatting.check(scan)?;
+                formatting.check(scan).map_err(|()| offset)?;
             }
         }
     }

@@ -38,9 +38,12 @@ Pasting or editing the URL does not fetch it.
 Interne uses the page’s declared title and keeps the original link target,
 even after a redirect.
 You can edit or clear any proposed field. Only **Save** creates the link and
-applies its tags. Interne stops reading overly large or complex pages before
-sending anything to OpenAI. If a page cannot be read, the form explains why;
-you can still fill it in and save manually. The server logs a warning with the
+applies its tags. If the HTML exceeds the markup limit, Interne looks for a
+title and meta description near the start of the document head. It offers
+whichever it can read without fetching the page again, sending anything to
+OpenAI, or suggesting tags. A refused request, timeout, or oversized download
+still fails. You can always fill in the form and save manually.
+When reading fails, the server logs a warning with the
 failure category and, when a site refuses the request, its HTTP status. The
 warning does not include the URL, page content, or your tags.
 
