@@ -115,6 +115,13 @@ impl Fixture {
             }))
             .route("/malformed-reply", get(|| async { Html("<title>Usable title</title><p>Bad model reply fixture</p>") }))
             .route("/too-large", get(|| async { Html("text".repeat(140_000)) }))
+            .route("/refused", get(|| async { (StatusCode::FORBIDDEN, "private refusal body") }))
+            .route("/field-notes", get(|| async {
+                Html(format!(
+                    "<title>Field notes</title><div hidden>{}</div><p>Seasonal planting notes.</p>",
+                    "soil &amp; water; ".repeat(9000)
+                ))
+            }))
             .route("/legacy-charset", get(|| async {
                 (
                     [(header::CONTENT_TYPE, "text/html ;\t; note=\"before; ; charset=us-ascii; \\\"after\";; charset=\"windows-\\1252\"; ;")],
@@ -685,6 +692,62 @@ async fn non_public_targets_and_unusable_page_bodies_do_not_reach_openai() {
 }
 
 #[tokio::test]
+async fn explains_page_failures_without_logging_the_link_or_its_contents() {
+    use tracing::instrument::WithSubscriber;
+    use tracing_subscriber::fmt::{MakeWriter, writer::MutexGuardWriter};
+
+    #[derive(Clone, Default)]
+    struct Capture(Arc<Mutex<Vec<u8>>>);
+
+    impl<'a> MakeWriter<'a> for Capture {
+        type Writer = MutexGuardWriter<'a, Vec<u8>>;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.0.make_writer()
+        }
+    }
+
+    let fixture = Fixture::new().await;
+    let capture = Capture::default();
+    let subscriber = tracing_subscriber::fmt()
+        .without_time()
+        .with_ansi(false)
+        .with_max_level(tracing::Level::WARN)
+        .with_writer(capture.clone())
+        .finish();
+    async {
+        for (path, explanation) in [
+            ("/refused?access=private-query", "denied access"),
+            ("/private-dns-redirect", "public"),
+            ("/large-catalogue", "complex"),
+        ] {
+            let url = format!("{}{path}", fixture.origin);
+            let response = fixture.suggest(&url, true).await;
+            assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+            let body = to_bytes(response.into_body(), 1024).await.unwrap();
+            assert!(std::str::from_utf8(&body).unwrap().contains(explanation));
+        }
+    }
+    .with_subscriber(subscriber)
+    .await;
+    let bytes = capture.0.lock().unwrap();
+    let logs = std::str::from_utf8(&bytes).unwrap();
+    for reason in ["http_status", "restricted_destination", "dom_items"] {
+        assert!(logs.contains(reason), "{logs}");
+    }
+    assert!(logs.contains("upstream_status=403"), "{logs}");
+    for private in [
+        "public.example",
+        "/refused",
+        "private-query",
+        "private refusal body",
+    ] {
+        assert!(!logs.contains(private), "{logs}");
+    }
+    assert!(fixture.upstream.provider.lock().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn returns_usable_details_even_when_the_other_field_cannot_be_suggested() {
     let fixture = Fixture::new().await;
     let details = fixture.details("/title-only").await;
@@ -926,6 +989,17 @@ async fn bounds_formatting_work_without_disabling_ordinary_formatted_pages() {
             .as_str()
             .unwrap()
             .starts_with("Version 1.2 is supported.")
+    );
+}
+
+#[tokio::test]
+async fn reads_a_compact_document_with_many_adjacent_text_fragments() {
+    let fixture = Fixture::new().await;
+    let details = fixture.details("/field-notes").await;
+    assert_eq!(details["title"], "Field notes");
+    assert_eq!(
+        fixture.upstream.provider.lock().unwrap()[0].1["input"]["excerpt"],
+        "Seasonal planting notes."
     );
 }
 

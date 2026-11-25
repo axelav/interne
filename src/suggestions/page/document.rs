@@ -13,6 +13,7 @@ use html5ever::{
 use scraper::{Html, HtmlTreeSink};
 
 use super::markup;
+use crate::error::PageReadError;
 
 #[cfg(not(panic = "unwind"))]
 compile_error!("Suggestion parsing requires panic unwinding to stop html5ever safely");
@@ -41,9 +42,9 @@ impl Budget {
         }
     }
 
-    pub(super) fn parse(&self, html: &str) -> Result<Html, ()> {
+    pub(super) fn parse(&self, html: &str) -> Result<Html, PageReadError> {
         self.before_deadline()?;
-        markup::check(html)?;
+        markup::check(html).map_err(|()| PageReadError::MarkupLimit)?;
         self.before_deadline()?;
         // TreeSink callbacks cannot return errors. Unwind only to this local
         // boundary, before an over-budget operation reaches the real sink.
@@ -58,51 +59,57 @@ impl Budget {
             )
             .one(html)
         }))
-        .or_else(|failure| {
-            if failure.is::<LimitExceeded>() {
-                Err(())
-            } else {
-                resume_unwind(failure)
-            }
+        .map_err(|failure| match failure.downcast::<LimitExceeded>() {
+            Ok(limit) => limit.0,
+            Err(failure) => resume_unwind(failure),
         })?;
         self.before_deadline()?;
         Ok(document)
     }
 
-    fn before_deadline(&self) -> Result<(), ()> {
+    fn before_deadline(&self) -> Result<(), PageReadError> {
         if Instant::now() < self.deadline {
             Ok(())
         } else {
-            Err(())
+            Err(PageReadError::Timeout)
         }
     }
 
     fn work(&self, count: usize) {
         let before = self.operations.get();
-        let after = debit(&self.operations, count);
+        let after = debit(&self.operations, count, PageReadError::DomOperations);
         // Check time periodically even in tree-builder comparison loops, without
         // querying the clock on every ordinary operation.
-        if before / 256 != after / 256 && self.before_deadline().is_err() {
-            stop();
+        if before / 256 != after / 256
+            && let Err(reason) = self.before_deadline()
+        {
+            stop(reason);
         }
     }
 
     fn allocate(&self, items: usize, bytes: usize) {
-        debit(&self.items, items);
-        debit(&self.bytes, bytes);
-        self.work(1 + items);
+        self.charge(items, bytes, 1 + items);
+    }
+
+    fn charge(&self, items: usize, bytes: usize, operations: usize) {
+        debit(&self.items, items, PageReadError::DomItems);
+        debit(&self.bytes, bytes, PageReadError::DomBytes);
+        self.work(operations);
     }
 }
 
-struct LimitExceeded;
+struct LimitExceeded(PageReadError);
 
-fn stop() -> ! {
+fn stop(reason: PageReadError) -> ! {
     // A rejected document is expected; bypass the process-wide panic hook.
-    resume_unwind(Box::new(LimitExceeded))
+    resume_unwind(Box::new(LimitExceeded(reason)))
 }
 
-fn debit(remaining: &Cell<usize>, count: usize) -> usize {
-    let after = remaining.get().checked_sub(count).unwrap_or_else(|| stop());
+fn debit(remaining: &Cell<usize>, count: usize, reason: PageReadError) -> usize {
+    let after = remaining
+        .get()
+        .checked_sub(count)
+        .unwrap_or_else(|| stop(reason));
     remaining.set(after);
     after
 }
@@ -116,10 +123,15 @@ struct Sink<'a> {
 }
 
 impl Sink<'_> {
-    fn insert(&self, child: &Child) {
+    fn insert(&self, child: &Child, creates_text_node: impl FnOnce() -> bool) {
         match child {
             NodeOrText::AppendNode(_) => self.budget.work(1),
-            NodeOrText::AppendText(text) => self.budget.allocate(1, text.len()),
+            NodeOrText::AppendText(text) => {
+                // HtmlTreeSink coalesces adjacent text. Even when no new node
+                // is needed, charge the full byte and operation cost.
+                self.budget
+                    .charge(usize::from(creates_text_node()), text.len(), 2);
+            }
         }
     }
 }
@@ -177,14 +189,26 @@ impl TreeSink for Sink<'_> {
     }
 
     fn append(&self, parent: &Node, child: Child) {
-        self.insert(&child);
+        self.insert(&child, || {
+            let document = self.inner.0.borrow();
+            let parent = document.tree.get(*parent).unwrap();
+            !parent.last_child().is_some_and(|n| n.value().is_text())
+        });
         self.inner.append(parent, child);
     }
 
     fn append_based_on_parent_node(&self, element: &Node, previous: &Node, child: Child) {
-        self.insert(&child);
-        self.inner
-            .append_based_on_parent_node(element, previous, child);
+        // Use the same foster-parent choice as HtmlTreeSink, so the chosen
+        // insertion site determines whether this text will coalesce.
+        let has_parent = {
+            let document = self.inner.0.borrow();
+            document.tree.get(*element).unwrap().parent().is_some()
+        };
+        if has_parent {
+            self.append_before_sibling(element, child);
+        } else {
+            self.append(previous, child);
+        }
     }
 
     fn append_doctype_to_document(
@@ -218,14 +242,23 @@ impl TreeSink for Sink<'_> {
     }
 
     fn append_before_sibling(&self, sibling: &Node, child: Child) {
-        self.insert(&child);
+        self.insert(&child, || {
+            let document = self.inner.0.borrow();
+            let sibling = document.tree.get(*sibling).unwrap();
+            sibling.parent().is_some()
+                && !sibling.prev_sibling().is_some_and(|n| n.value().is_text())
+        });
         self.inner.append_before_sibling(sibling, child);
     }
 
     fn add_attrs_if_missing(&self, node: &Node, attrs: Vec<Attribute>) {
         // Cap cumulative attempts before the inner sorted-vector insertion.
         // Duplicate names are charged too: they still require a lookup.
-        debit(&self.budget.merges, attrs.len());
+        debit(
+            &self.budget.merges,
+            attrs.len(),
+            PageReadError::AttributeMerges,
+        );
         self.budget.allocate(attrs.len(), attribute_bytes(&attrs));
         self.inner.add_attrs_if_missing(node, attrs);
     }

@@ -39,8 +39,10 @@ Interne uses the page’s declared title and keeps the original link target,
 even after a redirect.
 You can edit or clear any proposed field. Only **Save** creates the link and
 applies its tags. Interne stops reading overly large or complex pages before
-sending anything to OpenAI. If a page cannot be read, you can
-still fill in the form and save it manually.
+sending anything to OpenAI. If a page cannot be read, the form explains why;
+you can still fill it in and save manually. The server logs a warning with the
+failure category and, when a site refuses the request, its HTTP status. The
+warning does not include the URL, page content, or your tags.
 
 ## Project Structure
 

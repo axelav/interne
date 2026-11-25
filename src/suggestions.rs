@@ -13,6 +13,8 @@ use serde_json::{Value, json};
 use sqlx::SqlitePool;
 use url::Url;
 
+use crate::error::PageReadError;
+
 const OPENAI_RESPONSES_URL: &str = "https://api.openai.com/v1/responses";
 const MODEL: &str = "gpt-4.1-mini";
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -107,12 +109,12 @@ impl LinkSuggestions {
         url: Url,
         db: &SqlitePool,
         user_id: &str,
-    ) -> Result<Details, ()> {
+    ) -> Result<Details, PageReadError> {
         let deadline = Instant::now() + PAGE_TIMEOUT;
         let page =
             tokio::time::timeout_at(deadline.into(), page::fetch(&self.0.pages, url, deadline))
                 .await
-                .map_err(|_| ())??;
+                .map_err(|_| PageReadError::Timeout)??;
         let mut details = Details {
             title: page.title,
             ..Details::default()
@@ -157,7 +159,9 @@ impl LinkSuggestions {
             .send()
             .await
             .map_err(|_| ())?;
-        let body = limited_body(response, MAX_MODEL_BODY).await?;
+        let body = limited_body(response, MAX_MODEL_BODY)
+            .await
+            .map_err(|_| ())?;
         let response: ModelResponse = serde_json::from_slice(&body).map_err(|_| ())?;
         if response.status != "completed" {
             return Err(());
@@ -295,18 +299,26 @@ struct ModelDraft {
     tags: Value,
 }
 
-async fn limited_body(mut response: Response, limit: usize) -> Result<Vec<u8>, ()> {
-    if !response.status().is_success()
-        || response
-            .content_length()
-            .is_some_and(|len| len > limit as u64)
+async fn limited_body(mut response: Response, limit: usize) -> Result<Vec<u8>, PageReadError> {
+    if !response.status().is_success() {
+        return Err(PageReadError::HttpStatus(response.status().as_u16()));
+    }
+    if response
+        .content_length()
+        .is_some_and(|len| len > limit as u64)
     {
-        return Err(());
+        return Err(PageReadError::BodyTooLarge);
     }
     let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|_| ())? {
+    while let Some(chunk) = response.chunk().await.map_err(|error| {
+        if error.is_timeout() {
+            PageReadError::Timeout
+        } else {
+            PageReadError::BodyRead
+        }
+    })? {
         if chunk.len() > limit - body.len() {
-            return Err(());
+            return Err(PageReadError::BodyTooLarge);
         }
         body.extend_from_slice(&chunk);
     }

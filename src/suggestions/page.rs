@@ -4,7 +4,7 @@ mod markup;
 use std::{
     cell::LazyCell,
     collections::{HashMap, HashSet},
-    io,
+    error::Error,
     net::{IpAddr, SocketAddr},
     sync::{Arc, LazyLock},
     time::Instant,
@@ -22,6 +22,8 @@ use reqwest::{
 use scraper::{ElementRef, Html, Selector};
 use tokio::sync::Semaphore;
 use url::{Host, Url};
+
+use crate::error::PageReadError;
 
 use super::{CONNECT_TIMEOUT, limited_body};
 
@@ -56,7 +58,7 @@ impl Resolve for PublicDns {
                 tokio::net::lookup_host((name.as_str(), 0)).await?.collect();
             // These exact addresses go to the connector; no second DNS lookup.
             if addresses.is_empty() || addresses.iter().any(|addr| !is_public(addr.ip())) {
-                return Err(io::Error::other("non-public destination").into());
+                return Err(PageReadError::RestrictedDestination.into());
             }
             Ok(Box::new(addresses.into_iter()) as Addrs)
         })
@@ -88,22 +90,41 @@ fn is_public(ip: IpAddr) -> bool {
     }
 }
 
-fn validate_destination(url: &Url) -> Result<(), ()> {
+fn validate_destination(url: &Url) -> Result<(), PageReadError> {
     if !matches!(url.scheme(), "http" | "https")
         || !url.username().is_empty()
         || url.password().is_some()
     {
-        return Err(());
+        return Err(PageReadError::InvalidUrl);
     }
     match url.host() {
         Some(Host::Domain(_)) => Ok(()),
         Some(Host::Ipv4(ip)) if is_public(ip.into()) => Ok(()),
         Some(Host::Ipv6(ip)) if is_public(ip.into()) => Ok(()),
-        _ => Err(()),
+        _ => Err(PageReadError::RestrictedDestination),
     }
 }
 
-pub(super) async fn fetch(client: &Client, mut url: Url, deadline: Instant) -> Result<Page, ()> {
+fn request_error(error: reqwest::Error) -> PageReadError {
+    if error.is_timeout() {
+        return PageReadError::Timeout;
+    }
+    // The connector wraps our DNS rejection. Never log its error chain or URL.
+    let mut cause = error.source();
+    while let Some(inner) = cause {
+        if let Some(reason) = inner.downcast_ref::<PageReadError>() {
+            return *reason;
+        }
+        cause = inner.source();
+    }
+    PageReadError::Connection
+}
+
+pub(super) async fn fetch(
+    client: &Client,
+    mut url: Url,
+    deadline: Instant,
+) -> Result<Page, PageReadError> {
     for hop in 0..=MAX_REDIRECTS {
         // IP literals bypass the connector's DNS resolver.
         validate_destination(&url)?;
@@ -114,19 +135,25 @@ pub(super) async fn fetch(client: &Client, mut url: Url, deadline: Instant) -> R
             .header(ACCEPT_ENCODING, "identity")
             .send()
             .await
-            .map_err(|_| ())?;
+            .map_err(request_error)?;
         if response.status().is_redirection() {
             if hop == MAX_REDIRECTS {
-                return Err(());
+                return Err(PageReadError::Redirect);
             }
             let location = response
                 .headers()
                 .get(LOCATION)
-                .ok_or(())?
+                .ok_or(PageReadError::Redirect)?
                 .to_str()
-                .map_err(|_| ())?;
-            url = response.url().join(location).map_err(|_| ())?;
+                .map_err(|_| PageReadError::Redirect)?;
+            url = response
+                .url()
+                .join(location)
+                .map_err(|_| PageReadError::Redirect)?;
             continue;
+        }
+        if !response.status().is_success() {
+            return Err(PageReadError::HttpStatus(response.status().as_u16()));
         }
         let mut transfer_codings = response.headers().get_all(TRANSFER_ENCODING).into_iter();
         // Hyper removes chunked framing, but does not decode other transfer
@@ -135,7 +162,7 @@ pub(super) async fn fetch(client: &Client, mut url: Url, deadline: Instant) -> R
             && (!coding.as_bytes().eq_ignore_ascii_case(b"chunked")
                 || transfer_codings.next().is_some())
         {
-            return Err(());
+            return Err(PageReadError::UnsupportedEncoding);
         }
         if response
             .headers()
@@ -143,29 +170,35 @@ pub(super) async fn fetch(client: &Client, mut url: Url, deadline: Instant) -> R
             .iter()
             .any(|value| !value.as_bytes().eq_ignore_ascii_case(b"identity"))
         {
-            return Err(());
+            return Err(PageReadError::UnsupportedEncoding);
         }
-        let content_type = response.headers().get(CONTENT_TYPE).ok_or(())?;
+        let content_type = response
+            .headers()
+            .get(CONTENT_TYPE)
+            .ok_or(PageReadError::NotHtml)?;
         let transport_encoding = html_transport_encoding(content_type.as_bytes())?;
         let bytes = limited_body(response, MAX_PAGE_BODY).await?;
         // The blocking job uses the same deadline as retrieval and owns its
         // permit until parsing finishes or the budget stops it.
-        let permit = PAGE_PARSE_SLOTS.acquire().await.map_err(|_| ())?;
+        let permit = PAGE_PARSE_SLOTS
+            .acquire()
+            .await
+            .map_err(|_| PageReadError::ParserUnavailable)?;
         return tokio::task::spawn_blocking(move || {
             let _permit = permit;
             parse(&bytes, transport_encoding, deadline)
         })
         .await
-        .map_err(|_| ())?;
+        .map_err(|_| PageReadError::ParserUnavailable)?;
     }
-    Err(())
+    Err(PageReadError::Redirect)
 }
 
-fn html_transport_encoding(value: &[u8]) -> Result<Option<&'static Encoding>, ()> {
+fn html_transport_encoding(value: &[u8]) -> Result<Option<&'static Encoding>, PageReadError> {
     let mut fields = value.splitn(2, |&byte| byte == b';');
     let essence = fields.next().unwrap_or_default().trim_ascii();
     if !essence.eq_ignore_ascii_case(b"text/html") {
-        return Err(());
+        return Err(PageReadError::NotHtml);
     }
     let Some(parameters) = fields.next() else {
         return Ok(None);
@@ -220,7 +253,7 @@ fn parse(
     bytes: &[u8],
     transport_encoding: Option<&'static Encoding>,
     deadline: Instant,
-) -> Result<Page, ()> {
+) -> Result<Page, PageReadError> {
     let budget = document::Budget::new(deadline);
     let html = match Encoding::for_bom(bytes)
         .map(|(encoding, _)| encoding)
@@ -241,7 +274,10 @@ fn parse(
     Ok(extract(&document))
 }
 
-fn html_encoding(bytes: &[u8], budget: &document::Budget) -> Result<Option<&'static Encoding>, ()> {
+fn html_encoding(
+    bytes: &[u8],
+    budget: &document::Budget,
+) -> Result<Option<&'static Encoding>, PageReadError> {
     let prefix = &bytes[..bytes.len().min(HTML_CHARSET_SNIFF_BYTES)];
     // The HTML prescan recognizes a UTF-16 XML prefix before scanning for
     // ASCII meta tags. An ASCII XML declaration is only a fallback.
@@ -257,7 +293,7 @@ fn html_encoding(bytes: &[u8], budget: &document::Budget) -> Result<Option<&'sta
 fn meta_encoding(
     prefix: &[u8],
     budget: &document::Budget,
-) -> Result<Option<&'static Encoding>, ()> {
+) -> Result<Option<&'static Encoding>, PageReadError> {
     static META: LazyLock<Selector> =
         LazyLock::new(|| Selector::parse("meta[charset], meta[http-equiv][content]").unwrap());
     if !prefix

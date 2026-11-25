@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 use crate::AppState;
 use crate::auth::AuthUser;
-use crate::error::AppError;
+use crate::error::{AppError, PageReadError};
 use crate::models::{Collection, Entry, Interval, User, Visit};
 
 #[derive(Template)]
@@ -453,12 +453,13 @@ async fn suggest_entry(
     Json(form): Json<SuggestEntry>,
 ) -> Result<Json<crate::suggestions::Details>, AppError> {
     let suggestions = state.suggestions.ok_or(AppError::SuggestionsUnavailable)?;
-    let url = parse_link_url(&form.url).map_err(|_| AppError::UnreadablePage)?;
+    let url = parse_link_url(&form.url)
+        .map_err(|_| AppError::UnreadablePage(PageReadError::InvalidUrl))?;
     suggestions
         .suggest(url, &state.db, &user.id)
         .await
         .map(Json)
-        .map_err(|_| AppError::UnreadablePage)
+        .map_err(AppError::UnreadablePage)
 }
 
 async fn new_entry_form(
