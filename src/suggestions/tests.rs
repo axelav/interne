@@ -116,6 +116,12 @@ impl Fixture {
                     &b"<?xml encoding='utf-8'?><title>Caf\xe9</title><p>About caf\xe9s</p>"[..],
                 )
             }))
+            .route("/undeclared-legacy", get(|| async {
+                (
+                    [(header::CONTENT_TYPE, "text/html")],
+                    &b"<title>Tickets \xa310</title><p>Entry costs \x8012.</p>"[..],
+                )
+            }))
             .route("/http-token-charset", get(|| async {
                 (
                     [(header::CONTENT_TYPE, "text/html; revision=1.0~beta; charset=windows-1252")],
@@ -249,6 +255,7 @@ impl Fixture {
                     "<p>List: <select multiple><option hidden selected label='Hidden'></option><option>Shown</option></select></p>",
                     "<p>Stock: <select multiple><optgroup label='Sold out'><legend><span hidden>In </span>stock</legend><option>Basil</option></optgroup></select></p>",
                     "<p>Wrapped: <select><option>Pending</option><div><option hidden selected><span hidden>Not </span>paid<script>ignore</script></option></div></select></p>",
+                    "<select multiple><optgroup label='Sold out'><template></template><legend>In stock</legend><option>Basil</option></optgroup></select>",
                 ))
             }))
             .route("/multiselect-sizes", get(|| async {
@@ -258,6 +265,8 @@ impl Fixture {
                     "<p>Picker: <select multiple size=' +001x'><optgroup hidden><option selected><span hidden>Not </span>paid</option></optgroup><option>Paid</option></select></p>",
                     "<p>Zero: <select multiple size=0><option>Early</option><option>Late</option></select></p>",
                     "<p>Invalid: <select multiple size=bad><option>Low</option><option>High</option></select></p>",
+                    "<p>Image: <select multiple size=1><option selected><img alt='Not '>available</option></select></p>",
+                    "<p>Overflow: <select size=4294967296><option>Rejected</option><option selected>Approved</option></select></p>",
                 ))
             }))
             .route("/multiselect-counts-only", get(|| async {
@@ -613,6 +622,17 @@ async fn decodes_titles_and_provider_text_using_the_leading_xml_declaration() {
 }
 
 #[tokio::test]
+async fn recovers_prices_from_undeclared_legacy_html() {
+    let fixture = Fixture::new().await;
+    let details = fixture.details("/undeclared-legacy").await;
+    assert_eq!(details["title"], "Tickets £10");
+    assert_eq!(
+        fixture.upstream.provider.lock().unwrap()[0].1["input"],
+        "Entry costs €12."
+    );
+}
+
+#[tokio::test]
 async fn accepts_http_parameter_tokens_without_sniffing_non_html() {
     let fixture = Fixture::new().await;
     let details = fixture.details("/http-token-charset").await;
@@ -929,7 +949,7 @@ async fn collapsed_selects_supply_only_their_initially_selected_label() {
         fixture.upstream.provider.lock().unwrap()[0].1["input"],
         concat!(
             "First: Paid Second: Overdue Default: Ready Picker: Current Group: On hold ",
-            "List: Shown Stock: stock Basil Wrapped: Not paid"
+            "List: Shown Stock: stock Basil Wrapped: Not paid In stock Basil"
         )
     );
 }
@@ -940,7 +960,7 @@ async fn multiselects_send_the_displayed_menu_label_or_listbox_rows() {
     fixture.details("/multiselect-sizes").await;
     assert_eq!(
         fixture.upstream.provider.lock().unwrap()[0].1["input"],
-        "Menu: Approved Rows: Draft Approved Picker: Not paid Zero: Early Late Invalid: Low High"
+        "Menu: Approved Rows: Draft Approved Picker: Not paid Zero: Early Late Invalid: Low High Image: available Overflow: Approved"
     );
 }
 

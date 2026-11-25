@@ -222,14 +222,21 @@ fn parse(
     deadline: Instant,
 ) -> Result<Page, ()> {
     let budget = document::Budget::new(deadline);
-    let encoding = match Encoding::for_bom(bytes)
+    let html = match Encoding::for_bom(bytes)
         .map(|(encoding, _)| encoding)
         .or(transport_encoding)
     {
-        Some(encoding) => encoding,
-        None => html_encoding(bytes, &budget)?.unwrap_or(UTF_8),
+        Some(encoding) => encoding.decode(bytes).0,
+        None => match html_encoding(bytes, &budget)? {
+            Some(encoding) => encoding.decode(bytes).0,
+            None => match std::str::from_utf8(bytes) {
+                Ok(text) => text.into(),
+                // Undeclared legacy HTML commonly uses Windows-1252. Do not
+                // manufacture replacement characters for its non-UTF-8 bytes.
+                Err(_) => WINDOWS_1252.decode_without_bom_handling(bytes).0,
+            },
+        },
     };
-    let (html, _, _) = encoding.decode(bytes);
     let document = budget.parse(&html)?;
     Ok(extract(&document))
 }
@@ -375,18 +382,10 @@ fn extract(document: &Html) -> Page {
                         if !excerpt.append(text) {
                             break true;
                         }
-                    } else if let Some(child) = ElementRef::wrap(node) {
-                        match child.value().name() {
-                            "script" | "template" => {}
-                            "img" => {
-                                if let Some(alt) = child.attr("alt")
-                                    && !excerpt.append(alt)
-                                {
-                                    break true;
-                                }
-                            }
-                            _ => nodes.extend(node.children().rev().map(Visit::OptionText)),
-                        }
+                    } else if let Some(child) = ElementRef::wrap(node)
+                        && !matches!(child.value().name(), "script" | "template")
+                    {
+                        nodes.extend(node.children().rev().map(Visit::OptionText));
                     }
                     continue;
                 }
@@ -534,8 +533,7 @@ fn extract(document: &Html) -> Page {
                 let renders_legend = name == "optgroup"
                     && content
                         .child_elements()
-                        .next()
-                        .is_some_and(|child| child.value().name() == "legend");
+                        .any(|child| child.value().name() == "legend");
                 if matches!(name, "option" | "optgroup")
                     && !renders_legend
                     && let Some(label) = content.attr("label").filter(|label| !label.is_empty())
@@ -671,16 +669,17 @@ fn is_listbox(select: ElementRef<'_>) -> bool {
     // HTML's non-negative integer syntax admits leading whitespace, '+',
     // leading zeroes and trailing non-digits. Classify without overflow.
     let size = select.attr("size").unwrap_or_default().trim_ascii_start();
-    let mut digits = size
+    let size = size
         .strip_prefix('+')
         .unwrap_or(size)
         .bytes()
         .take_while(u8::is_ascii_digit)
-        .skip_while(|&digit| digit == b'0');
-    match digits.next() {
-        None => select.attr("multiple").is_some(),
-        Some(b'1') => digits.next().is_some(),
-        Some(_) => true,
+        .try_fold(0u32, |n, digit| {
+            n.checked_mul(10)?.checked_add(u32::from(digit - b'0'))
+        });
+    match size {
+        None | Some(0) => select.attr("multiple").is_some(),
+        Some(n) => n > 1,
     }
 }
 
