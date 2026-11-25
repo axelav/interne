@@ -167,6 +167,28 @@ async fn tag_search_keeps_matching_as_a_greek_prefix_grows() {
 }
 
 #[tokio::test]
+async fn tag_search_ranks_the_exact_match_before_the_limit() {
+    let app = TestApp::new().await;
+    let (_, user) = app.create_user("Tag Owner").await;
+    let cookie = app.login(&user).await;
+    let tags = "σ,ς0,ς1,ς2,ς3,ς4,ς5,ς6,ς7,ς8,ς9";
+    let tags: String = url::form_urlencoded::byte_serialize(tags.as_bytes()).collect();
+    let body =
+        format!("url=https%3A%2F%2Fexample.com&title=Link&duration=1&interval=weeks&tags={tags}");
+    let resp = app.post_form("/entries", &body, Some(&cookie)).await;
+    common::assert_redirect(&resp, "/");
+
+    let resp = app
+        .post_form("/api/tags/search", "q=+%CE%A3+", Some(&cookie))
+        .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    let exact = html.find(">σ<").expect("exact tag is missing");
+    assert!(exact < html.find(">ς0<").expect("first variant is missing"));
+    assert_eq!(html.matches("role=\"option\"").count(), 10);
+}
+
+#[tokio::test]
 async fn tag_search_filters_existing_tags_before_limiting_suggestions() {
     let app = TestApp::new().await;
     let (_, user) = app.create_user("Tag Owner").await;

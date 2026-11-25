@@ -221,16 +221,16 @@ async fn search_tags(
             FROM tags t
             JOIN entry_tags et ON et.tag_id = t.id
             JOIN entries e ON e.id = et.entry_id
-            WHERE e.user_id = ?
+            WHERE e.user_id = ?1
               -- Lowercasing a Greek prefix can turn its last sigma into final sigma.
-              AND instr(replace(t.name, 'ς', 'σ'), replace(?, 'ς', 'σ')) = 1
+              AND instr(replace(t.name, 'ς', 'σ'), replace(?2, 'ς', 'σ')) = 1
               -- Only names representable in the single-line, comma-separated field.
               AND instr(t.name, ',') = 0
               AND instr(t.name, char(0)) = 0
               AND instr(t.name, char(10)) = 0
               AND instr(t.name, char(13)) = 0
-              AND t.name NOT IN (SELECT value FROM json_each(?))
-            ORDER BY t.name
+              AND t.name NOT IN (SELECT value FROM json_each(?3))
+            ORDER BY (t.name = ?2) DESC, t.name
             LIMIT 10
             "#,
         )

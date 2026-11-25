@@ -6,8 +6,8 @@ New links default to a one-week revisit interval. Choose a shorter or longer int
 
 When adding or editing a link, type in any comma-separated segment of the Tags
 field to find matching tags from your own links. Tags already in another
-segment are not suggested. Click a suggestion or use ↑/↓ and Enter to select
-it. Escape closes the list without changing the tags.
+segment are not suggested, and an exact match appears first. Click a suggestion
+or use ↑/↓ and Enter to select it. Escape closes the list without changing the tags.
 
 ## Stack
 
