@@ -5,8 +5,9 @@ Spaced repetition for websites. Track URLs you want to revisit periodically, mar
 New links default to a one-week revisit interval. Choose a shorter or longer interval in the Add Link form.
 
 When adding or editing a link, type in any comma-separated segment of the Tags
-field to find matching tags from your own links. Click a suggestion or use
-↑/↓ and Enter to select it. Escape closes the list without changing the tags.
+field to find matching tags from your own links. Tags already in another
+segment are not suggested. Click a suggestion or use ↑/↓ and Enter to select
+it. Escape closes the list without changing the tags.
 
 ## Stack
 

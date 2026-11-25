@@ -5,6 +5,7 @@
     let timer;
     let request;
     let selected = null;
+    let selectionEnter = false;
     let composing = false;
 
     function currentSegment() {
@@ -42,7 +43,10 @@
         const { signal } = request = new AbortController();
         timer = setTimeout(async () => {
             try {
-                const response = await fetch('/api/tags/search?q=' + encodeURIComponent(query), {
+                const exclude = next.value.slice(0, next.start) + next.value.slice(next.end + 1);
+                const params = new URLSearchParams({ q: query });
+                if (exclude) params.set('exclude', exclude);
+                const response = await fetch('/api/tags/search?' + params, {
                     signal, redirect: 'error',
                 });
                 if (!response.ok) return;
@@ -85,6 +89,7 @@
     });
     input.addEventListener('blur', () => {
         segment = null;
+        selectionEnter = false;
         dismiss();
     });
 
@@ -93,9 +98,16 @@
         if (event.key === 'Escape') {
             event.preventDefault();
             dismiss();
-        } else if (event.key === 'Enter' && selected) {
-            event.preventDefault();
-            choose(selected);
+        } else if (event.key === 'Enter') {
+            if (event.repeat && selectionEnter) {
+                event.preventDefault();
+                return;
+            }
+            selectionEnter = selected !== null;
+            if (selectionEnter) {
+                event.preventDefault();
+                choose(selected);
+            }
         } else if (!list.hidden && sameSegment(segment, currentSegment()) &&
             (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
             event.preventDefault();

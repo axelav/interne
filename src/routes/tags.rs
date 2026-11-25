@@ -18,6 +18,7 @@ use crate::routes::entries::{EntryView, EntryWithCount, build_entry_view};
 #[derive(Deserialize)]
 struct TagSearchParams {
     q: Option<String>,
+    exclude: Option<String>,
 }
 
 #[derive(Template)]
@@ -203,24 +204,37 @@ async fn search_tags(
     let html = if prefix.is_empty() {
         String::new()
     } else {
+        // Commas delimit whole names; the SQL only considers comma-free tags.
+        let mut excluded = String::from(",");
+        if let Some(tags) = params.exclude {
+            for tag in tags.split(',').map(str::trim).filter(|tag| !tag.is_empty()) {
+                excluded.push_str(&tag.to_lowercase());
+                excluded.push(',');
+            }
+        }
+
         let names = sqlx::query_scalar(
             r#"
             SELECT DISTINCT t.name
             FROM tags t
             JOIN entry_tags et ON et.tag_id = t.id
             JOIN entries e ON e.id = et.entry_id
-            WHERE e.user_id = ? AND instr(t.name, ?) = 1
+            WHERE e.user_id = ?
+              -- Lowercasing a Greek prefix can turn its last sigma into final sigma.
+              AND instr(replace(t.name, 'ς', 'σ'), replace(?, 'ς', 'σ')) = 1
               -- Only names representable in the single-line, comma-separated field.
               AND instr(t.name, ',') = 0
               AND instr(t.name, char(0)) = 0
               AND instr(t.name, char(10)) = 0
               AND instr(t.name, char(13)) = 0
+              AND instr(?, ',' || t.name || ',') = 0
             ORDER BY t.name
             LIMIT 10
             "#,
         )
         .bind(&user.id)
         .bind(&prefix)
+        .bind(&excluded)
         .fetch_all(&state.db)
         .await?;
 

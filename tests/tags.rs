@@ -146,6 +146,49 @@ async fn tag_search_matches_literal_prefixes_in_the_users_own_vocabulary() {
 }
 
 #[tokio::test]
+async fn tag_search_keeps_matching_as_a_greek_prefix_grows() {
+    let app = TestApp::new().await;
+    let (_, user) = app.create_user("Tag Owner").await;
+    let cookie = app.login(&user).await;
+    let tag: String = url::form_urlencoded::byte_serialize("ΜΟΥΣΙΚΗ".as_bytes()).collect();
+    let body =
+        format!("url=https%3A%2F%2Fexample.com&title=Link&duration=1&interval=weeks&tags={tag}");
+    let resp = app.post_form("/entries", &body, Some(&cookie)).await;
+    common::assert_redirect(&resp, "/");
+
+    for prefix in ["ΜΟΥ", "ΜΟΥΣ", "ΜΟΥΣΙ"] {
+        let query: String = url::form_urlencoded::byte_serialize(prefix.as_bytes()).collect();
+        let resp = app
+            .get(&format!("/api/tags/search?q={query}"), Some(&cookie))
+            .await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        assert!(body_string(resp).await.contains(">μουσικη<"), "{prefix}");
+    }
+}
+
+#[tokio::test]
+async fn tag_search_filters_existing_tags_before_limiting_suggestions() {
+    let app = TestApp::new().await;
+    let (_, user) = app.create_user("Tag Owner").await;
+    let cookie = app.login(&user).await;
+    let body = "url=https%3A%2F%2Fexample.com&title=Link&duration=1&interval=weeks&tags=r,r01,r02,r03,r04,r05,r06,r07,r08,r09,r10,r11";
+    let resp = app.post_form("/entries", body, Some(&cookie)).await;
+    common::assert_redirect(&resp, "/");
+
+    let resp = app
+        .get(
+            "/api/tags/search?q=r&exclude=%C2%85R01+,r02,r03,r04,r05,r06,r07,r08,r09,r10",
+            Some(&cookie),
+        )
+        .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = body_string(resp).await;
+    assert!(html.contains(">r<"));
+    assert!(html.contains(">r11<"));
+    assert!(!html.contains(">r01<"));
+}
+
+#[tokio::test]
 async fn tag_search_only_offers_names_that_the_form_can_save() {
     let app = TestApp::new().await;
     let (_, user) = app.create_user("Tag Owner").await;
