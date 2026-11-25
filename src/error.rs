@@ -7,12 +7,24 @@ pub enum AppError {
     Template(askama::Error),
     Session(tower_sessions::session::Error),
     NotFound,
+    SuggestionsUnavailable,
+    UnreadablePage,
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         match self {
             AppError::NotFound => (StatusCode::NOT_FOUND, "Not found").into_response(),
+            AppError::SuggestionsUnavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "Suggestions are unavailable. You can still fill in the form and save.",
+            )
+                .into_response(),
+            AppError::UnreadablePage => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Could not read a public HTML page at that URL.",
+            )
+                .into_response(),
             AppError::Database(e) => {
                 tracing::error!("Database error: {e}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error").into_response()

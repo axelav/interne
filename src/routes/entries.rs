@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::{
-    Form, Router,
-    extract::{Path, State},
+    Form, Json, Router,
+    extract::{DefaultBodyLimit, Path, State},
     response::{Html, IntoResponse, Redirect},
     routing::{delete, get, post},
 };
@@ -101,34 +101,25 @@ pub struct EntryForm {
     collection_id: Option<String>,
 }
 
-/// Normalizes a URL string: prepends `https://` if no scheme, then parses with
-/// the `url` crate. Returns `Ok(normalized_url_string)` or `Err(error_message)`.
-fn normalize_url(raw: &str) -> Result<String, String> {
+/// Parses a link target, assuming HTTPS if the reader omitted the scheme.
+fn parse_link_url(raw: &str) -> Result<url::Url, &'static str> {
+    let invalid = "Please enter a valid URL (e.g. example.com)";
     let raw = raw.trim();
-    if raw.is_empty() {
-        return Ok(String::new());
-    }
-
-    // If no scheme, prepend https://
-    let with_scheme = if raw.starts_with("http://") || raw.starts_with("https://") {
-        raw.to_string()
+    let parsed = if raw.starts_with("http://") || raw.starts_with("https://") {
+        url::Url::parse(raw)
     } else if raw.contains("://") {
-        // Has a scheme but it's not http/https (e.g. ftp://)
-        return Err("Please enter a valid URL (e.g. example.com)".to_string());
+        return Err(invalid);
     } else {
-        format!("https://{}", raw)
+        url::Url::parse(&format!("https://{raw}"))
     };
+    parsed
+        .ok()
+        .filter(|url| url.host_str().is_some_and(|host| host.contains('.')))
+        .ok_or(invalid)
+}
 
-    match url::Url::parse(&with_scheme) {
-        Ok(parsed) => {
-            // Reject if the host is empty or not a valid domain
-            match parsed.host_str() {
-                Some(host) if host.contains('.') => Ok(parsed.to_string()),
-                _ => Err("Please enter a valid URL (e.g. example.com)".to_string()),
-            }
-        }
-        Err(_) => Err("Please enter a valid URL (e.g. example.com)".to_string()),
-    }
+fn normalize_url(raw: &str) -> Result<String, &'static str> {
+    parse_link_url(raw).map(String::from)
 }
 
 fn validate_entry_form(form: &EntryForm) -> HashMap<String, String> {
@@ -143,8 +134,8 @@ fn validate_entry_form(form: &EntryForm) -> HashMap<String, String> {
 
     if form.url.trim().is_empty() {
         errors.insert("url".to_string(), "URL is required".to_string());
-    } else if let Err(msg) = normalize_url(&form.url) {
-        errors.insert("url".to_string(), msg);
+    } else if let Err(msg) = parse_link_url(&form.url) {
+        errors.insert("url".to_string(), msg.to_string());
     }
 
     if form.title.trim().is_empty() {
@@ -177,6 +168,10 @@ pub fn router() -> Router<AppState> {
         .route("/waiting", get(list_waiting_entries))
         .route("/unseen", get(list_unseen_entries))
         .route("/entries/new", get(new_entry_form))
+        .route(
+            "/entries/suggest",
+            post(suggest_entry).layer(DefaultBodyLimit::max(8192)),
+        )
         .route("/entries", post(create_entry))
         .route("/entries/{id}/edit", get(edit_entry_form))
         .route("/entries/{id}", post(update_entry))
@@ -445,6 +440,25 @@ async fn visit_entry(
         },
     };
     Ok(Html(template.render()?))
+}
+
+#[derive(Deserialize)]
+struct SuggestEntry {
+    url: String,
+}
+
+async fn suggest_entry(
+    State(state): State<AppState>,
+    _: AuthUser,
+    Json(form): Json<SuggestEntry>,
+) -> Result<Json<crate::suggestions::Details>, AppError> {
+    let suggestions = state.suggestions.ok_or(AppError::SuggestionsUnavailable)?;
+    let url = parse_link_url(&form.url).map_err(|_| AppError::UnreadablePage)?;
+    suggestions
+        .suggest(url)
+        .await
+        .map(Json)
+        .map_err(|_| AppError::UnreadablePage)
 }
 
 async fn new_entry_form(

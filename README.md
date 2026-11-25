@@ -17,6 +17,28 @@ or use ↑/↓ and Enter to select it. Escape closes the list without changing t
 - **htmx** — partial page updates without custom JS
 - **Docker** — multi-stage build for deployment
 
+## Suggested link details
+
+On Add Link, **Suggest details** fetches a public HTML page and sends a short
+text excerpt to OpenAI for a draft description. Interne omits hidden elements,
+closed panel bodies, datalists, struck-out or deleted text, fallback notices,
+canvas, SVG graphics, and MathML formulas. In a named disclosure group, only
+the first initially open panel contributes its body. Embedded resources are
+not fetched; their contents are omitted without joining adjacent text. Interne
+reads static shadow-root content but skips hosts that need slot assignment. It uses
+image alternative text, native dropdown labels, and listbox rows. A one-row
+multiple dropdown contributes a label only when exactly one option is selected.
+Ruby text keeps the base spelling without its annotations; superscripts and subscripts
+are marked explicitly.
+If a script cannot fit, the excerpt drops the incomplete expression and marks
+the cutoff with an ellipsis. Interne does not run page scripts or apply CSS.
+Pasting or editing the URL does not fetch it.
+Interne uses the page’s declared title and keeps the original link target,
+even after a redirect.
+Only **Save** creates the link. Interne stops reading overly large or complex
+pages before sending anything to OpenAI. If a page cannot be read, you can
+still fill in the form and save it manually.
+
 ## Project Structure
 
 ```
@@ -128,14 +150,28 @@ Updating `ca-certificates` alone does not fix an older application binary.
 | `GITHUB_CLIENT_ID` | required | GitHub OAuth app client ID |
 | `GITHUB_CLIENT_SECRET` | required | GitHub OAuth app client secret; never commit it |
 | `PUBLIC_BASE_URL` | required | Public origin used to build callbacks and connection URLs |
+| `OPENAI_API_KEY` | unset | Optional instance-wide key for Add Link descriptions. Unset or blank disables suggestions. |
 | `GITHUB_SIGNUP_MODE` | `closed` | `closed` rejects unknown identities; `public` creates users |
 | `SECURE_COOKIES` | `true` | Set to `false` only for local HTTP development |
-| `RUST_LOG` | `info` | Tracing filter, such as `info` or `interne=debug`; invalid filters stop startup |
+| `RUST_LOG` | `info` | Tracing filter, such as `info` or `interne=debug`; invalid filters stop startup. HTML parser logs are suppressed so diagnostics don't include raw page contents. |
 
 In closed mode, an unknown GitHub user sees exactly: “Access isn’t open yet. Email
 webmaster@honkytonk.in for an invite.” Create their account and URL with
 `interne invite-user "Name"`. To open registration, set
 `GITHUB_SIGNUP_MODE=public` and restart; no schema or code change is needed.
+
+To enable suggestions, set `OPENAI_API_KEY` in the server environment (or local
+`.env`) and restart Interne. For Compose, supply it through the deployment’s
+existing secret mechanism as an environment variable. The key stays on the
+server. Interne submits the excerpt as the only page context to OpenAI’s
+Responses API using `gpt-4.1-mini` with response storage disabled. It does not
+send the pasted URL as a separate field or include the saved library.
+
+Every signed-in reader can use the shared OpenAI key through suggestions. Before
+enabling suggestions with public signup, set request limits for
+`POST /entries/suggest` at the reverse proxy and configure OpenAI project usage
+alerts and rate limits. Neither public signup nor suggestions is enabled by
+default.
 
 ## Production rollout
 

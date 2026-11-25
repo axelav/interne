@@ -307,6 +307,20 @@ textarea {
     font-size: 0.8125rem;
 }
 
+.suggest-details {
+    color: var(--gray-600);
+    font-size: 0.875rem;
+}
+
+.suggest-details button.link-button {
+    color: var(--black);
+    text-decoration: underline;
+}
+
+.suggest-details p:not(:empty) {
+    margin-top: 0.25rem;
+}
+
 .char-count {
     font-size: 0.75rem;
     color: var(--gray-400);

@@ -20,6 +20,13 @@
                 placeholder="example.com"
             >
             <div class="error-message">{% if let Some(err) = errors.get("url") %}{{ err }}{% endif %}</div>
+            {% if entry.is_none() %}
+            <div class="suggest-details">
+                <button type="button" class="link-button" id="suggest-details" aria-describedby="suggest-disclosure">Suggest details</button>
+                <p id="suggest-disclosure">Interne will fetch this URL and send a short excerpt of the public page to OpenAI to draft a description.</p>
+                <p id="suggest-status" role="status"></p>
+            </div>
+            {% endif %}
         </div>
 
         <div class="form-group">
@@ -200,6 +207,84 @@
     }
     ta.addEventListener('input', update);
     update();
+
+    const suggest = document.getElementById('suggest-details');
+    if (!suggest) return;
+
+    const url = form.elements.url;
+    const status = document.getElementById('suggest-status');
+    const fields = [form.elements.title, ta];
+    const edited = new Set(fields.filter(field => field.value !== ''));
+    const suggested = new Set();
+    let request;
+
+    for (const field of fields) {
+        field.addEventListener('input', () => {
+            edited.add(field);
+            suggested.delete(field);
+        });
+    }
+
+    function cancelSuggestion() {
+        request?.abort();
+        status.textContent = '';
+    }
+
+    url.addEventListener('input', () => {
+        cancelSuggestion();
+        for (const field of suggested) {
+            field.value = '';
+            showError(field.name, '');
+        }
+        suggested.clear();
+        update();
+    });
+    form.addEventListener('submit', event => {
+        if (!event.defaultPrevented) cancelSuggestion();
+    });
+    window.addEventListener('pagehide', cancelSuggestion);
+
+    suggest.addEventListener('click', async () => {
+        if (!validateField('url')) return;
+        cancelSuggestion();
+        request = new AbortController();
+        const { signal } = request;
+        const target = url.value;
+        status.textContent = 'Looking for details…';
+        try {
+            const reply = await fetch('/entries/suggest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: target }),
+                redirect: 'error',
+                signal
+            });
+            if (!reply.ok) {
+                const message = await reply.text();
+                if (!signal.aborted && url.value === target) {
+                    status.textContent = reply.status === 422 || reply.status === 503
+                        ? message : 'Could not suggest details.';
+                }
+                return;
+            }
+            const details = await reply.json();
+            if (signal.aborted || url.value !== target) return;
+            let applied = false;
+            for (const field of fields) {
+                const value = details[field.name];
+                if (typeof value !== 'string' || edited.has(field)) continue;
+                field.value = value;
+                suggested.add(field);
+                showError(field.name, '');
+                applied = true;
+            }
+            update();
+            status.textContent = details.warning || (applied ? 'Suggestions added. Review before saving.'
+                : (details.title || details.description ? 'No fields changed.' : 'No details found on that page.'));
+        } catch {
+            if (!signal.aborted && url.value === target) status.textContent = 'Could not suggest details.';
+        }
+    });
 })();
 </script>
 <script src="/static/tag-autocomplete.js?v={{ static_hash }}" defer></script>
