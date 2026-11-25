@@ -46,8 +46,8 @@
                 const exclude = next.value.slice(0, next.start) + next.value.slice(next.end + 1);
                 const params = new URLSearchParams({ q: query });
                 if (exclude) params.set('exclude', exclude);
-                const response = await fetch('/api/tags/search?' + params, {
-                    signal, redirect: 'error',
+                const response = await fetch('/api/tags/search', {
+                    method: 'POST', body: params, signal, redirect: 'error',
                 });
                 if (!response.ok) return;
                 const html = await response.text();

@@ -136,7 +136,7 @@ async fn tag_search_matches_literal_prefixes_in_the_users_own_vocabulary() {
     }
 
     let resp = app
-        .get("/api/tags/search?q=+R_+", Some(&owner_cookie))
+        .post_form("/api/tags/search", "q=+R_+", Some(&owner_cookie))
         .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
@@ -159,7 +159,7 @@ async fn tag_search_keeps_matching_as_a_greek_prefix_grows() {
     for prefix in ["ΜΟΥ", "ΜΟΥΣ", "ΜΟΥΣΙ"] {
         let query: String = url::form_urlencoded::byte_serialize(prefix.as_bytes()).collect();
         let resp = app
-            .get(&format!("/api/tags/search?q={query}"), Some(&cookie))
+            .post_form("/api/tags/search", &format!("q={query}"), Some(&cookie))
             .await;
         assert_eq!(resp.status(), StatusCode::OK);
         assert!(body_string(resp).await.contains(">μουσικη<"), "{prefix}");
@@ -176,8 +176,9 @@ async fn tag_search_filters_existing_tags_before_limiting_suggestions() {
     common::assert_redirect(&resp, "/");
 
     let resp = app
-        .get(
-            "/api/tags/search?q=r&exclude=%C2%85R01+,r02,r03,r04,r05,r06,r07,r08,r09,r10",
+        .post_form(
+            "/api/tags/search",
+            "q=r&exclude=%C2%85R01+,r02,r03,r04,r05,r06,r07,r08,r09,r10",
             Some(&cookie),
         )
         .await;
@@ -207,7 +208,9 @@ async fn tag_search_only_offers_names_that_the_form_can_save() {
         .await
         .unwrap();
 
-    let resp = app.get("/api/tags/search?q=research", Some(&cookie)).await;
+    let resp = app
+        .post_form("/api/tags/search", "q=research", Some(&cookie))
+        .await;
     assert_eq!(resp.status(), StatusCode::OK);
     let html = body_string(resp).await;
     assert!(html.contains(">research<"));
@@ -221,7 +224,7 @@ async fn tag_search_requires_a_full_session() {
     let migration_cookie = app.legacy_login(&invite_code).await;
 
     for cookie in [None, Some(migration_cookie.as_str())] {
-        let resp = app.get("/api/tags/search?q=r", cookie).await;
+        let resp = app.post_form("/api/tags/search", "q=r", cookie).await;
         common::assert_redirect(&resp, "/login");
     }
 }
@@ -235,12 +238,8 @@ async fn tag_search_returns_no_suggestions_for_empty_or_unmatched_queries() {
     let resp = app.post_form("/entries", body, Some(&cookie)).await;
     common::assert_redirect(&resp, "/");
 
-    for path in [
-        "/api/tags/search",
-        "/api/tags/search?q=+",
-        "/api/tags/search?q=zzz",
-    ] {
-        let resp = app.get(path, Some(&cookie)).await;
+    for body in ["", "q=+", "q=zzz"] {
+        let resp = app.post_form("/api/tags/search", body, Some(&cookie)).await;
         assert_eq!(resp.status(), StatusCode::OK);
         assert!(body_string(resp).await.trim().is_empty());
     }

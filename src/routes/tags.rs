@@ -1,10 +1,10 @@
 use askama::Template;
 use axum::{
-    Router,
-    extract::{Path, Query, State},
+    Form, Router,
+    extract::{Path, State},
     http::header,
     response::{Html, IntoResponse},
-    routing::get,
+    routing::{get, post},
 };
 use chrono::Utc;
 use serde::Deserialize;
@@ -113,7 +113,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/tags", get(list_tags))
         .route("/tags/{name}", get(show_tag))
-        .route("/api/tags/search", get(search_tags))
+        .route("/api/tags/search", post(search_tags))
 }
 
 async fn list_tags(
@@ -198,7 +198,7 @@ async fn show_tag(
 async fn search_tags(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    Query(params): Query<TagSearchParams>,
+    Form(params): Form<TagSearchParams>,
 ) -> Result<impl IntoResponse, AppError> {
     let prefix = params.q.as_deref().unwrap_or("").trim().to_lowercase();
     let html = if prefix.is_empty() {
