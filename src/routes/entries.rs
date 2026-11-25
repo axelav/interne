@@ -475,6 +475,27 @@ async fn new_entry_form(
     Ok(Html(template.render()?))
 }
 
+// Both writes select from this single-row relation. An unavailable destination
+// produces no row, so the same statement checks access and changes the entry.
+macro_rules! with_writable_destination {
+    ($statement:literal) => {
+        concat!(
+            r#"
+            WITH writable_destination AS (
+                SELECT d.* FROM (SELECT ? AS user_id, ? AS collection_id) AS d
+                WHERE d.collection_id IS NULL OR EXISTS (
+                    SELECT 1 FROM collections WHERE id = d.collection_id AND owner_id = d.user_id
+                ) OR EXISTS (
+                    SELECT 1 FROM collection_members
+                    WHERE collection_id = d.collection_id AND user_id = d.user_id
+                )
+            )
+            "#,
+            $statement
+        )
+    };
+}
+
 async fn create_entry(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -511,15 +532,15 @@ async fn create_entry(
 
     let collection_id = form.collection_id.filter(|s| !s.is_empty());
 
-    sqlx::query(
+    let result = sqlx::query(with_writable_destination!(
         r#"
         INSERT INTO entries (id, user_id, collection_id, url, title, description, duration, interval, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        SELECT ?, user_id, collection_id, ?, ?, ?, ?, ?, ?, ? FROM writable_destination
         "#
-    )
-    .bind(&id)
+    ))
     .bind(&user.id)
     .bind(&collection_id)
+    .bind(&id)
     .bind(normalize_url(&form.url).unwrap())
     .bind(&form.title)
     .bind(&form.description)
@@ -529,6 +550,9 @@ async fn create_entry(
     .bind(&now)
     .execute(&state.db)
     .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
 
     // Handle tags
     if let Some(tags) = form.tags {
@@ -629,19 +653,15 @@ async fn update_entry(
     Path(id): Path<String>,
     Form(form): Form<EntryForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Verify user owns this entry
-    let entry: Option<Entry> = sqlx::query_as("SELECT * FROM entries WHERE id = ? AND user_id = ?")
-        .bind(&id)
-        .bind(&user.id)
-        .fetch_optional(&state.db)
-        .await?;
-
-    let Some(entry) = entry else {
-        return Ok(Redirect::to("/").into_response());
-    };
-
     let errors = validate_entry_form(&form);
     if !errors.is_empty() {
+        let entry: Entry = sqlx::query_as("SELECT * FROM entries WHERE id = ? AND user_id = ?")
+            .bind(&id)
+            .bind(&user.id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or(AppError::NotFound)?;
+
         let collections: Vec<Collection> = sqlx::query_as(
             r#"
             SELECT c.* FROM collections c
@@ -669,23 +689,29 @@ async fn update_entry(
     let now = chrono::Utc::now().to_rfc3339();
     let collection_id = form.collection_id.filter(|s| !s.is_empty());
 
-    sqlx::query(
+    let result = sqlx::query(with_writable_destination!(
         r#"
         UPDATE entries
-        SET url = ?, title = ?, description = ?, duration = ?, interval = ?, collection_id = ?, updated_at = ?
-        WHERE id = ?
+        SET url = ?, title = ?, description = ?, duration = ?, interval = ?,
+            collection_id = writable_destination.collection_id, updated_at = ?
+        FROM writable_destination
+        WHERE entries.id = ? AND entries.user_id = writable_destination.user_id
         "#
-    )
+    ))
+    .bind(&user.id)
+    .bind(&collection_id)
     .bind(normalize_url(&form.url).unwrap())
     .bind(&form.title)
     .bind(&form.description)
     .bind(form.duration)
     .bind(form.interval)
-    .bind(&collection_id)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)
     .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
 
     // Clear existing tags and re-add
     sqlx::query("DELETE FROM entry_tags WHERE entry_id = ?")
