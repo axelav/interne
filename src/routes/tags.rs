@@ -8,6 +8,7 @@ use axum::{
 };
 use chrono::Utc;
 use serde::Deserialize;
+use sqlx::types::Json;
 
 use crate::AppState;
 use crate::auth::AuthUser;
@@ -204,14 +205,15 @@ async fn search_tags(
     let html = if prefix.is_empty() {
         String::new()
     } else {
-        // Commas delimit whole names; the SQL only considers comma-free tags.
-        let mut excluded = String::from(",");
-        if let Some(tags) = params.exclude {
-            for tag in tags.split(',').map(str::trim).filter(|tag| !tag.is_empty()) {
-                excluded.push_str(&tag.to_lowercase());
-                excluded.push(',');
-            }
-        }
+        let excluded: Vec<_> = params
+            .exclude
+            .iter()
+            .flat_map(|tags| tags.split(','))
+            .map(str::trim)
+            .filter(|tag| !tag.is_empty())
+            .map(str::to_lowercase)
+            .collect();
+        let excluded = (!excluded.is_empty()).then_some(Json(excluded));
 
         let names = sqlx::query_scalar(
             r#"
@@ -227,14 +229,14 @@ async fn search_tags(
               AND instr(t.name, char(0)) = 0
               AND instr(t.name, char(10)) = 0
               AND instr(t.name, char(13)) = 0
-              AND instr(?, ',' || t.name || ',') = 0
+              AND t.name NOT IN (SELECT value FROM json_each(?))
             ORDER BY t.name
             LIMIT 10
             "#,
         )
         .bind(&user.id)
         .bind(&prefix)
-        .bind(&excluded)
+        .bind(excluded)
         .fetch_all(&state.db)
         .await?;
 

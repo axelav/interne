@@ -89,26 +89,29 @@
     });
     input.addEventListener('blur', () => {
         segment = null;
-        selectionEnter = false;
         dismiss();
     });
 
-    input.addEventListener('keydown', event => {
-        if (event.isComposing) return;
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            dismiss();
-        } else if (event.key === 'Enter') {
-            if (event.repeat && selectionEnter) {
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Enter') {
+            if (!event.repeat) {
+                selectionEnter = false;
+            } else if (selectionEnter && event.target.form === input.form) {
+                // The same press can repeat on another control after focus moves.
                 event.preventDefault();
                 return;
             }
-            selectionEnter = selected !== null;
-            if (selectionEnter) {
-                event.preventDefault();
-                choose(selected);
-            }
+        }
+        if (event.target !== input || event.isComposing) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            dismiss();
+        } else if (event.key === 'Enter' && !event.repeat && selected) {
+            event.preventDefault();
+            selectionEnter = true;
+            choose(selected);
         } else if (!list.hidden && sameSegment(segment, currentSegment()) &&
+            !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey &&
             (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
             event.preventDefault();
             selected?.setAttribute('aria-selected', 'false');
