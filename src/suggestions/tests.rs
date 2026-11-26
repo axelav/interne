@@ -310,6 +310,12 @@ impl Fixture {
                 record_page(&kind, headers, &upstream);
                 let head = match kind.as_str() {
                     "both" => "<title>Plants &amp; herbs</title><META content='Grow A &gt; B' NAME=description>".into(),
+                    "inert-template" => concat!(
+                        "<template><ul><li><img src='/private'></li></ul>",
+                        "<template><script>let text = '</template>';</script></template>",
+                        "<meta name=description content='Not the page'><title>Not the title</title></template>",
+                        "<title>Plant guide</title><meta name=description content='Soil notes'>",
+                    ).into(),
                     "no-metadata" => "<meta name=author content='Not a description'>".into(),
                     "decoys" => concat!(
                         "<!-- <title>Comment</title><meta name=description content=comment> -->",
@@ -324,11 +330,19 @@ impl Fixture {
                 };
                 Html(format!("<head>{head}</head><ul>{}</ul>", "<li>Chamomile</li>".repeat(4200)))
             }))
-            .route("/complex-charset-prescan", get(|| async {
-                let html = format!(
-                    "<title>Plants &amp; herbs</title><meta name=description content='Soil notes'><div {}>",
-                    (0..140).map(|n| format!("a{n} ")).collect::<String>()
-                );
+            .route("/complex-charset-prescan/{kind}", get(move |axum::extract::Path(kind): axum::extract::Path<String>, State(upstream): State<Arc<Outbound>>, headers: HeaderMap| async move {
+                record_page(&kind, headers, &upstream);
+                let mut html = match kind.as_str() {
+                    "ascii" => b"<title>Plants &amp; herbs</title><meta name=description content='Soil notes'>".to_vec(),
+                    "utf8" => "<meta charset=utf-8><title>Café</title><meta name=description content='Thé vert'>".as_bytes().to_vec(),
+                    "legacy" => b"<!-- \xe9 --><meta charset=windows-1252><title>Caf\xe9</title><meta name=description content='Th\xe9 vert'>".to_vec(),
+                    _ => unreachable!(),
+                };
+                html.extend_from_slice(b"<div");
+                for n in 0..140 {
+                    html.extend_from_slice(format!(" a{n}").as_bytes());
+                }
+                html.push(b'>');
                 ([(header::CONTENT_TYPE, "text/html")], html)
             }))
             .route("/catalogue-metadata", get(|| async {
@@ -976,6 +990,7 @@ async fn complex_pages_return_only_complete_head_metadata_without_a_second_fetch
     let fixture = Fixture::new().await;
     for (kind, title, description) in [
         ("both", Some("Plants & herbs"), Some("Grow A > B")),
+        ("inert-template", Some("Plant guide"), Some("Soil notes")),
         ("clipped-title", None, Some("Plant guide")),
         ("clipped-meta", Some("Plant guide"), None),
     ] {
@@ -994,10 +1009,18 @@ async fn complex_pages_return_only_complete_head_metadata_without_a_second_fetch
             "{kind}"
         );
     }
-    let details = fixture.details("/complex-charset-prescan").await;
-    assert_eq!(details["title"], "Plants & herbs");
-    assert_eq!(details["description"], "Soil notes");
-    assert_eq!(details["tags"], json!([]));
+    for (kind, title, note) in [
+        ("ascii", "Plants & herbs", "Soil notes"),
+        ("utf8", "Café", "Thé vert"),
+        ("legacy", "Café", "Thé vert"),
+    ] {
+        let details = fixture
+            .details(&format!("/complex-charset-prescan/{kind}"))
+            .await;
+        assert_eq!(details["title"], title, "{kind}");
+        assert_eq!(details["description"], note, "{kind}");
+        assert_eq!(details["tags"], json!([]), "{kind}");
+    }
     let pages = fixture.upstream.pages.lock().unwrap();
     assert_eq!(
         pages
@@ -1006,11 +1029,15 @@ async fn complex_pages_return_only_complete_head_metadata_without_a_second_fetch
             .collect::<Vec<_>>(),
         [
             "both",
+            "inert-template",
             "clipped-title",
             "clipped-meta",
             "no-metadata",
             "decoys",
-            "late"
+            "late",
+            "ascii",
+            "utf8",
+            "legacy",
         ]
     );
     assert!(fixture.upstream.provider.lock().unwrap().is_empty());

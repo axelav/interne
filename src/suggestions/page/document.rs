@@ -45,6 +45,19 @@ impl Budget {
     pub(super) fn parse(&self, html: &str) -> Result<Html, PageReadError> {
         self.before_deadline()?;
         markup::check(html).map_err(|_| PageReadError::MarkupLimit)?;
+        self.parse_guarded(html)
+    }
+
+    /// The charset prescan can use a complete declaration before the first
+    /// over-budget tag. All tree-building limits still apply to that prefix.
+    pub(super) fn parse_prescan(&self, html: &str) -> Result<(Html, Option<usize>), PageReadError> {
+        self.before_deadline()?;
+        let stop = markup::check(html).err();
+        let document = self.parse_guarded(&html[..stop.unwrap_or(html.len())])?;
+        Ok((document, stop))
+    }
+
+    fn parse_guarded(&self, html: &str) -> Result<Html, PageReadError> {
         self.before_deadline()?;
         // TreeSink callbacks cannot return errors. Unwind only to this local
         // boundary, before an over-budget operation reaches the real sink.

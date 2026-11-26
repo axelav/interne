@@ -125,6 +125,10 @@ impl Head {
                     _ => Rawtext,
                 });
             }
+            (StartTag, "textarea" | "xmp" | "iframe" | "noembed") if self.templates != 0 => {
+                self.raw = true;
+                return RawData(if name == "textarea" { Rcdata } else { Rawtext });
+            }
             (StartTag, "meta") if self.templates == 0 && self.description.is_none() => {
                 let attr = |name: &str| tag.attrs.iter().find(|a| &*a.name.local == name);
                 if attr("name").is_some_and(|a| a.value.eq_ignore_ascii_case("description"))
@@ -140,7 +144,11 @@ impl Head {
             // Within an inert template we can skip ordinary containers. Stop
             // rather than guess if foreign content, special insertion modes,
             // or other unexpected markup would require a tree builder.
-            (_, "div" | "span" | "p" | "section" | "article") if self.templates != 0 => {}
+            (
+                _,
+                "div" | "span" | "p" | "section" | "article" | "ul" | "ol" | "menu" | "li" | "dl"
+                | "dt" | "dd" | "picture" | "source" | "img",
+            ) if self.templates != 0 => {}
             _ => self.done = true,
         }
         Continue

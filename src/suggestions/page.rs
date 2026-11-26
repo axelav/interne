@@ -262,31 +262,50 @@ fn parse(
     deadline: Instant,
 ) -> Result<Page, PageReadError> {
     let budget = document::Budget::new(deadline);
-    let html = match Encoding::for_bom(bytes)
+    let encoding = if let Some(encoding) = Encoding::for_bom(bytes)
         .map(|(encoding, _)| encoding)
         .or(transport_encoding)
     {
-        Some(encoding) => encoding.decode(bytes).0,
-        None => match html_encoding(bytes, &budget) {
-            Ok(Some(encoding)) => encoding.decode(bytes).0,
-            Err(error @ PageReadError::MarkupLimit) => {
-                // The charset prescan itself hit the guard. Keep only complete
-                // metadata before any non-ASCII byte or encoding shift.
-                let prefix = &bytes[..bytes.len().min(HTML_CHARSET_SNIFF_BYTES)];
-                let end = prefix
-                    .iter()
-                    .position(|&b| !b.is_ascii() || matches!(b, 0 | 0x0e | 0x0f | 0x1b))
-                    .unwrap_or(prefix.len());
-                let text = std::str::from_utf8(&prefix[..end]).map_err(|_| error)?;
-                return metadata::recover(text, deadline)?.ok_or(error);
+        Some(encoding)
+    } else if bytes.starts_with(b"<\0?\0x\0") {
+        Some(UTF_16LE)
+    } else if bytes.starts_with(b"\0<\0?\0x") {
+        Some(UTF_16BE)
+    } else {
+        let prefix = &bytes[..bytes.len().min(HTML_CHARSET_SNIFF_BYTES)];
+        let mut meta = None;
+        if prefix.windows(5).any(|s| s.eq_ignore_ascii_case(b"<meta")) {
+            let sniff = String::from_utf8_lossy(prefix);
+            let (document, stop) = budget.parse_prescan(&sniff)?;
+            meta = meta_encoding(&document);
+            if let Some(stop) = stop {
+                let end = match sniff {
+                    std::borrow::Cow::Borrowed(_) => stop,
+                    // Lossy decoding can change byte offsets, but never the
+                    // order or number of ASCII markup starts.
+                    std::borrow::Cow::Owned(text) => {
+                        let starts = text[..stop].bytes().filter(|&b| b == b'<').count();
+                        prefix
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, b)| **b == b'<')
+                            .nth(starts)
+                            .expect("markup guard stopped at '<'")
+                            .0
+                    }
+                };
+                return recover_prescan(&prefix[..end], meta, deadline);
             }
-            Err(error) => return Err(error),
-            Ok(None) => match std::str::from_utf8(bytes) {
-                Ok(text) => text.into(),
-                // Undeclared legacy HTML commonly uses Windows-1252. Do not
-                // manufacture replacement characters for its non-UTF-8 bytes.
-                Err(_) => WINDOWS_1252.decode_without_bom_handling(bytes).0,
-            },
+        }
+        meta.or_else(|| xml_encoding(prefix))
+    };
+    let html = match encoding {
+        Some(encoding) => encoding.decode(bytes).0,
+        None => match std::str::from_utf8(bytes) {
+            Ok(text) => text.into(),
+            // Undeclared legacy HTML commonly uses Windows-1252. Do not
+            // manufacture replacement characters for its non-UTF-8 bytes.
+            Err(_) => WINDOWS_1252.decode_without_bom_handling(bytes).0,
         },
     };
     match budget.parse(&html) {
@@ -298,37 +317,29 @@ fn parse(
     }
 }
 
-fn html_encoding(
-    bytes: &[u8],
-    budget: &document::Budget,
-) -> Result<Option<&'static Encoding>, PageReadError> {
-    let prefix = &bytes[..bytes.len().min(HTML_CHARSET_SNIFF_BYTES)];
-    // The HTML prescan recognizes a UTF-16 XML prefix before scanning for
-    // ASCII meta tags. An ASCII XML declaration is only a fallback.
-    if prefix.starts_with(b"<\0?\0x\0") {
-        return Ok(Some(UTF_16LE));
-    }
-    if prefix.starts_with(b"\0<\0?\0x") {
-        return Ok(Some(UTF_16BE));
-    }
-    Ok(meta_encoding(prefix, budget)?.or_else(|| xml_encoding(prefix)))
+fn recover_prescan(
+    prefix: &[u8],
+    meta: Option<&'static Encoding>,
+    deadline: Instant,
+) -> Result<Page, PageReadError> {
+    let text = match meta.or_else(|| xml_encoding(prefix)) {
+        Some(encoding) => encoding.decode_without_bom_handling(prefix).0,
+        None => {
+            // Without a complete declaration, stop at the first byte that
+            // might need a non-ASCII decoder or shift its state.
+            let end = prefix
+                .iter()
+                .position(|&b| !b.is_ascii() || matches!(b, 0 | 0x0e | 0x0f | 0x1b))
+                .unwrap_or(prefix.len());
+            std::str::from_utf8(&prefix[..end]).unwrap().into()
+        }
+    };
+    metadata::recover(&text, deadline)?.ok_or(PageReadError::MarkupLimit)
 }
 
-fn meta_encoding(
-    prefix: &[u8],
-    budget: &document::Budget,
-) -> Result<Option<&'static Encoding>, PageReadError> {
+fn meta_encoding(document: &Html) -> Option<&'static Encoding> {
     static META: LazyLock<Selector> =
         LazyLock::new(|| Selector::parse("meta[charset], meta[http-equiv][content]").unwrap());
-    if !prefix
-        .windows(5)
-        .any(|text| text.eq_ignore_ascii_case(b"<meta"))
-    {
-        return Ok(None);
-    }
-    // The declaration itself is ASCII. Only inspect the HTML standard's
-    // initial sniffing window, not the full body decoded with a guess.
-    let document = budget.parse(&String::from_utf8_lossy(prefix))?;
     let encoding = document.select(&META).find_map(|element| {
         if let Some(charset) = element.attr("charset") {
             return Encoding::for_label_no_replacement(charset.as_bytes());
@@ -341,11 +352,11 @@ fn meta_encoding(
         }
         pragma_encoding(element.attr("content")?.as_bytes())
     });
-    Ok(encoding.map(|encoding| match encoding.name() {
+    encoding.map(|encoding| match encoding.name() {
         "UTF-16BE" | "UTF-16LE" => UTF_8,
         "x-user-defined" => WINDOWS_1252,
         _ => encoding,
-    }))
+    })
 }
 
 fn xml_encoding(prefix: &[u8]) -> Option<&'static Encoding> {
