@@ -226,9 +226,14 @@
         });
     }
 
+    function setStatus(message, isError = false) {
+        status.classList.toggle('error-message', isError);
+        status.textContent = isError ? 'Error: ' + message : message;
+    }
+
     function cancelSuggestion() {
         request?.abort();
-        status.textContent = '';
+        setStatus('');
     }
 
     url.addEventListener('input', () => {
@@ -250,13 +255,13 @@
         cancelSuggestion();
         const eligible = Object.fromEntries(fields.map(field => [field.name, !edited.has(field)]));
         if (!Object.values(eligible).some(Boolean)) {
-            status.textContent = 'No fields changed.';
+            setStatus('No fields changed.');
             return;
         }
         request = new AbortController();
         const { signal } = request;
         const target = url.value;
-        status.textContent = 'Looking for details…';
+        setStatus('Looking for details…');
         try {
             const reply = await fetch('/entries/suggest', {
                 method: 'POST',
@@ -268,8 +273,8 @@
             if (!reply.ok) {
                 const message = await reply.text();
                 if (!signal.aborted && url.value === target) {
-                    status.textContent = reply.status === 422 || reply.status === 503
-                        ? message : 'Could not suggest details.';
+                    setStatus(reply.status === 422 || reply.status === 503
+                        ? message : 'Could not suggest details.', true);
                 }
                 return;
             }
@@ -288,10 +293,11 @@
                 applied = true;
             }
             update();
-            status.textContent = details.warning || (applied ? 'Suggestions updated. Review before saving.'
-                : (details.title || details.description || tags ? 'No fields changed.' : 'No details found on that page.'));
+            setStatus(details.warning || (applied ? 'Suggestions updated. Review before saving.'
+                : (details.title || details.description || tags ? 'No fields changed.' : 'No details found on that page.')),
+                !applied && Boolean(details.unavailable?.length));
         } catch {
-            if (!signal.aborted && url.value === target) status.textContent = 'Could not suggest details.';
+            if (!signal.aborted && url.value === target) setStatus('Could not suggest details.', true);
         }
     });
 })();

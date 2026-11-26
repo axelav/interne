@@ -317,6 +317,11 @@ textarea {
     text-decoration: underline;
 }
 
+#suggest-disclosure {
+    color: #707070;
+    font-size: 0.75rem;
+}
+
 .suggest-details p:not(:empty) {
     margin-top: 0.25rem;
 }
