@@ -23,7 +23,7 @@
             {% if entry.is_none() %}
             <div class="suggest-details">
                 <button type="button" class="link-button" id="suggest-details" aria-describedby="suggest-disclosure">Suggest details</button>
-                <p id="suggest-disclosure">Interne will fetch this URL and may send a short excerpt of the public page and names from your own tags to OpenAI to suggest a bookmark note and tags. Nothing is saved until you choose Save.</p>
+                <p id="suggest-disclosure">Interne reads the public page for its title. To suggest a note or tags, it may send a short excerpt to OpenAI. It sends names from your own tags only when suggesting tags. Fields you edit or clear stay yours. Nothing is saved until you choose Save.</p>
                 <p id="suggest-status" role="status"></p>
             </div>
             {% endif %}
@@ -248,6 +248,11 @@
     suggest.addEventListener('click', async () => {
         if (!validateField('url')) return;
         cancelSuggestion();
+        const eligible = Object.fromEntries(fields.map(field => [field.name, !edited.has(field)]));
+        if (!Object.values(eligible).some(Boolean)) {
+            status.textContent = 'No fields changed.';
+            return;
+        }
         request = new AbortController();
         const { signal } = request;
         const target = url.value;
@@ -256,7 +261,7 @@
             const reply = await fetch('/entries/suggest', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ url: target }),
+                body: JSON.stringify({ url: target, fields: eligible }),
                 redirect: 'error',
                 signal
             });
@@ -270,18 +275,20 @@
             }
             const details = await reply.json();
             if (signal.aborted || url.value !== target) return;
-            const tags = Array.isArray(details.tags) ? details.tags.join(', ') : '';
+            const tags = details.tags.join(', ');
             let applied = false;
             for (const field of fields) {
-                const value = field.name === 'tags' ? tags : details[field.name];
-                if (!value || typeof value !== 'string' || edited.has(field)) continue;
+                if (!eligible[field.name] || edited.has(field) || details.unavailable?.includes(field.name)) continue;
+                const value = field.name === 'tags' ? tags : details[field.name] ?? '';
+                if (!value && !suggested.has(field)) continue;
                 field.value = value;
-                suggested.add(field);
+                if (value) suggested.add(field);
+                else suggested.delete(field);
                 showError(field.name, '');
                 applied = true;
             }
             update();
-            status.textContent = details.warning || (applied ? 'Suggestions added. Review before saving.'
+            status.textContent = details.warning || (applied ? 'Suggestions updated. Review before saving.'
                 : (details.title || details.description || tags ? 'No fields changed.' : 'No details found on that page.'));
         } catch {
             if (!signal.aborted && url.value === target) status.textContent = 'Could not suggest details.';

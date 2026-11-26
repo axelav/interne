@@ -15,7 +15,12 @@ async fn only_signed_in_users_can_request_suggestions_and_missing_key_does_not_b
     let target = "https://example.com/article";
 
     let request = || Request::post("/entries/suggest").header("content-type", "application/json");
-    let payload = || Body::from(json!({"url": target}).to_string());
+    let payload = || {
+        Body::from(
+            json!({"url": target, "fields": {"title": true, "description": true, "tags": true}})
+                .to_string(),
+        )
+    };
     let anonymous = app.request(request().body(payload()).unwrap()).await;
     assert_redirect(&anonymous, "/login");
 

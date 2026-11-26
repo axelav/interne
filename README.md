@@ -19,10 +19,10 @@ or use ↑/↓ and Enter to select it. Escape closes the list without changing t
 
 ## Suggested link details
 
-On Add Link, **Suggest details** fetches a public HTML page. It sends a short
-text excerpt and tag names from your own saved links to OpenAI to draft a brief
-bookmark note and up to four tags. It prefers labels you already use and can
-suggest a new one, even if you have no tags yet. Interne omits hidden elements,
+On Add Link, **Suggest details** reads the page title directly. If you also need
+a bookmark note or tags, Interne sends a short public-page excerpt to OpenAI.
+Only tag suggestions include names from your own saved links. Interne suggests
+up to four tags, preferring existing labels but allowing new ones. It omits hidden elements,
 closed panel bodies, datalists, struck-out or deleted text, fallback notices,
 canvas, SVG graphics, and MathML formulas. In a named disclosure group, only
 the first initially open panel contributes its body. Embedded resources are
@@ -37,7 +37,9 @@ the cutoff with an ellipsis. Interne does not run page scripts or apply CSS.
 Pasting or editing the URL does not fetch it.
 Interne uses the page’s declared title and keeps the original link target,
 even after a redirect.
-You can edit or clear any proposed field. Only **Save** creates the link and
+You can edit or clear any proposed field. Retrying replaces earlier suggestions,
+including removing tags the new result no longer suggests. It keeps your edits
+and any fields the retry failed to read. Only **Save** creates the link and
 applies its tags. If the HTML exceeds the markup limit, Interne looks for a
 title and meta description near the start of the document head. It offers
 whichever it can read without fetching the page again, sending anything to
@@ -171,9 +173,9 @@ webmaster@honkytonk.in for an invite.” Create their account and URL with
 To enable suggestions, set `OPENAI_API_KEY` in the server environment (or local
 `.env`) and restart Interne. For Compose, supply it through the deployment’s
 existing secret mechanism as an environment variable. The key stays on the
-server. Interne sends the excerpt and up to 100 of the reader’s most-used short
-tag names to OpenAI’s Responses API using `gpt-4.1-mini` with response storage
-disabled. It does not send the pasted URL as a separate field, other saved
+server. Interne uses OpenAI’s Responses API (`gpt-4.1-mini`) with response storage
+disabled. When suggesting tags it includes up to 100 of the reader’s most-used
+short tag names. It does not send the pasted URL as a separate field, other saved
 links, visit history, or tag names used only by other readers.
 
 Every signed-in reader can use the shared OpenAI key through suggestions. Before

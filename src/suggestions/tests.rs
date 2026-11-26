@@ -443,11 +443,13 @@ impl Fixture {
             }))
             .route("/responses", post(|State(upstream): State<Arc<Outbound>>, headers: HeaderMap, Json(mut body): Json<Value>| async move {
                 let input: Value = serde_json::from_str(body["input"].as_str().unwrap()).unwrap();
-                let reply = match input["excerpt"].as_str().unwrap() {
+                let mut reply = match input["excerpt"].as_str().unwrap() {
                     "Bad model reply fixture" => json!({}),
                     "Invalid shape" => json!({"description": DESCRIPTION, "tags": "one, two"}),
                     "Invalid delimiters" => json!({"description": DESCRIPTION, "tags": ["one,two", "bad\nlabel"]}),
                     "Invalid description" => json!({"description": [123], "tags": ["cycling"]}),
+                    "Invalid missing-note" => json!({"tags": ["cycling"]}),
+                    "Invalid null-note" => json!({"description": null, "tags": ["cycling"]}),
                     "Artificial intelligence research." => {
                         let candidates = input["candidate_tags"].as_array().unwrap();
                         let label = if candidates.iter().any(|tag| tag == "ai") { "ai" } else { "artificial intelligence" };
@@ -455,6 +457,8 @@ impl Fixture {
                     }
                     _ => json!({"description": DESCRIPTION, "tags": ["cycling"]}),
                 };
+                let properties = &body["text"]["format"]["schema"]["properties"];
+                reply.as_object_mut().unwrap().retain(|name, _| properties.get(name).is_some());
                 body["input"] = input;
                 upstream.provider.lock().unwrap().push((headers, body));
                 let text = reply.to_string();
@@ -532,6 +536,15 @@ impl Fixture {
     }
 
     async fn suggest(&self, url: &str, authenticated: bool) -> Response {
+        self.suggest_fields(
+            url,
+            authenticated,
+            json!({"title": true, "description": true, "tags": true}),
+        )
+        .await
+    }
+
+    async fn suggest_fields(&self, url: &str, authenticated: bool, fields: Value) -> Response {
         let mut request =
             Request::post("/entries/suggest").header(header::CONTENT_TYPE, "application/json");
         if authenticated {
@@ -539,7 +552,9 @@ impl Fixture {
         }
         self.send(
             request
-                .body(Body::from(json!({"url": url}).to_string()))
+                .body(Body::from(
+                    json!({"url": url, "fields": fields}).to_string(),
+                ))
                 .unwrap(),
         )
         .await
@@ -640,6 +655,64 @@ async fn suggests_details_without_saving_or_replacing_the_original_target() {
 }
 
 #[tokio::test]
+async fn requests_only_the_fields_the_reader_can_still_use() {
+    let fixture = Fixture::new().await;
+    fixture
+        .save("https://example.org/", "Example", "", "personal-label")
+        .await;
+    let url = format!("{}/final", fixture.origin);
+    for (title, description, tags) in [
+        (false, false, false),
+        (true, false, false),
+        (false, true, false),
+        (false, false, true),
+    ] {
+        let response = fixture
+            .suggest_fields(
+                &url,
+                true,
+                json!({"title": title, "description": description, "tags": tags}),
+            )
+            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let details: Value =
+            serde_json::from_slice(&to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(details["title"], json!(title.then_some(TITLE)));
+        assert_eq!(
+            details["description"],
+            json!(description.then_some(DESCRIPTION))
+        );
+        assert_eq!(
+            details["tags"],
+            if tags { json!(["cycling"]) } else { json!([]) }
+        );
+        assert!(details["warning"].is_null());
+        if !description && !tags {
+            assert_eq!(
+                fixture.upstream.pages.lock().unwrap().len(),
+                usize::from(title)
+            );
+            assert!(fixture.upstream.provider.lock().unwrap().is_empty());
+        }
+    }
+    let requests = fixture.upstream.provider.lock().unwrap();
+    let [(_, note), (_, tags)] = requests.as_slice() else {
+        panic!("expected one note-only and one tag-only request");
+    };
+    assert_eq!(note["input"], json!({"excerpt": DESCRIPTION}));
+    assert!(!note.to_string().contains("personal-label"));
+    assert_eq!(
+        note["text"]["format"]["schema"]["required"],
+        json!(["description"])
+    );
+    assert_eq!(tags["input"]["candidate_tags"], json!(["personal-label"]));
+    assert_eq!(
+        tags["text"]["format"]["schema"]["required"],
+        json!(["tags"])
+    );
+}
+
+#[tokio::test]
 async fn only_the_requesting_readers_labels_reach_the_provider() {
     let mut fixture = Fixture::new().await;
     fixture
@@ -704,6 +777,17 @@ async fn malformed_provider_fields_do_not_discard_usable_siblings() {
     assert_eq!(details["title"], "Usable title");
     assert!(details["description"].is_null());
     assert_eq!(details["tags"], json!(["cycling"]));
+
+    let missing = fixture.details("/invalid/missing-note").await;
+    assert_eq!(missing["title"], "Usable title");
+    assert_eq!(missing["tags"], json!(["cycling"]));
+    assert!(missing["warning"].is_string());
+    assert_eq!(missing["unavailable"], json!(["description"]));
+    let empty = fixture.details("/invalid/null-note").await;
+    assert!(empty["description"].is_null());
+    assert_eq!(empty["tags"], json!(["cycling"]));
+    assert!(empty["warning"].is_null());
+    assert!(empty["unavailable"].as_array().is_none_or(Vec::is_empty));
 }
 
 #[tokio::test]

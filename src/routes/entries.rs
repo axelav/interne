@@ -445,6 +445,7 @@ async fn visit_entry(
 #[derive(Deserialize)]
 struct SuggestEntry {
     url: String,
+    fields: crate::suggestions::RequestedFields,
 }
 
 async fn suggest_entry(
@@ -456,7 +457,7 @@ async fn suggest_entry(
     let url = parse_link_url(&form.url)
         .map_err(|_| AppError::UnreadablePage(PageReadError::InvalidUrl))?;
     suggestions
-        .suggest(url, &state.db, &user.id)
+        .suggest(url, form.fields, &state.db, &user.id)
         .await
         .map(Json)
         .map_err(AppError::UnreadablePage)
