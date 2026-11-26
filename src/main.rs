@@ -5,6 +5,7 @@ use std::sync::Arc;
 use interne::AuthServices;
 use interne::config::ServerAuthConfig;
 use interne::github::GitHubOAuthClient;
+use interne::suggestions::LinkSuggestions;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
@@ -16,7 +17,11 @@ async fn main() {
             eprintln!("Logging configuration error: {error}");
             std::process::exit(1);
         });
-    tracing_subscriber::fmt().with_env_filter(log_filter).init();
+    install_logging(
+        tracing_subscriber::fmt()
+            .with_env_filter(log_filter)
+            .finish(),
+    );
 
     let args: Vec<String> = env::args().collect();
 
@@ -142,7 +147,17 @@ async fn main() {
         config: server_auth.auth,
         github: Arc::new(github),
     };
-    let app = interne::build_app(pool, secure, auth).await;
+    let suggestions = env::var("OPENAI_API_KEY")
+        .ok()
+        .filter(|key| !key.trim().is_empty())
+        .and_then(|key| match LinkSuggestions::new(key.trim()) {
+            Ok(service) => Some(service),
+            Err(message) => {
+                tracing::warn!(message, "link suggestions unavailable");
+                None
+            }
+        });
+    let app = interne::build_app(pool, secure, auth, suggestions).await;
 
     let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
     let listener = TcpListener::bind(addr).await.unwrap();
@@ -173,9 +188,60 @@ fn parse_log_filter(value: Option<&str>) -> Result<EnvFilter, String> {
         .map_err(|_| "RUST_LOG must be a valid tracing filter directive".to_string())
 }
 
+fn install_logging(subscriber: impl tracing::Subscriber + Send + Sync + 'static) {
+    use tracing_log::{AsLog, LogTracer};
+
+    tracing::subscriber::set_global_default(subscriber).expect("install tracing subscriber");
+    // html5ever logs raw page tokens before excerpt filtering. Do not allow
+    // RUST_LOG directives to include those records in application diagnostics.
+    LogTracer::builder()
+        .ignore_crate("html5ever")
+        .with_max_level(tracing::level_filters::LevelFilter::current().as_log())
+        .init()
+        .expect("install log bridge");
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{parse_log_filter, parse_secure_cookies};
+    use std::sync::{Arc, Mutex};
+
+    use tracing_subscriber::fmt::{MakeWriter, writer::MutexGuardWriter};
+
+    use super::{install_logging, parse_log_filter, parse_secure_cookies};
+
+    #[derive(Default, Clone)]
+    struct LogCapture(Arc<Mutex<Vec<u8>>>);
+
+    impl<'a> MakeWriter<'a> for LogCapture {
+        type Writer = MutexGuardWriter<'a, Vec<u8>>;
+
+        fn make_writer(&'a self) -> Self::Writer {
+            self.0.make_writer()
+        }
+    }
+
+    #[test]
+    fn debug_logging_does_not_record_page_contents() {
+        let capture = LogCapture::default();
+        install_logging(
+            tracing_subscriber::fmt()
+                .with_env_filter(
+                    parse_log_filter(Some("trace,html5ever::tree_builder=trace")).unwrap(),
+                )
+                .with_writer(capture.clone())
+                .finish(),
+        );
+        tracing::debug!("unrelated diagnostic");
+        tracing_log::log::debug!(target: "fixture", "bridged diagnostic");
+        scraper::Html::parse_document("<p hidden>unlisted marker</p>");
+
+        let bytes = capture.0.lock().unwrap();
+        let log = std::str::from_utf8(&bytes).unwrap();
+        assert!(log.contains("unrelated diagnostic"));
+        assert!(log.contains("bridged diagnostic"));
+        assert!(!log.contains("html5ever::"), "{log}");
+        assert!(!log.contains("unlisted marker"), "{log}");
+    }
 
     #[test]
     fn secure_cookies_default_true_and_accept_only_exact_booleans() {

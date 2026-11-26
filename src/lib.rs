@@ -7,6 +7,7 @@ pub mod error;
 pub mod github;
 pub mod models;
 pub mod routes;
+pub mod suggestions;
 
 pub const STATIC_HASH: &str = env!("STATIC_HASH");
 
@@ -28,6 +29,7 @@ use tracing::Level;
 
 use crate::config::AuthConfig;
 use crate::github::GitHubProvider;
+use crate::suggestions::LinkSuggestions;
 
 #[derive(Clone)]
 pub struct AuthServices {
@@ -39,6 +41,7 @@ pub struct AuthServices {
 pub struct AppState {
     pub db: SqlitePool,
     pub auth: AuthServices,
+    suggestions: Option<LinkSuggestions>,
 }
 
 async fn health() -> &'static str {
@@ -54,7 +57,12 @@ fn trace_path(uri: &Uri) -> &str {
 /// Caller is responsible for running database migrations on `pool` beforehand.
 /// This function sets up the session store (and migrates its table), then
 /// assembles all route modules, middleware, and state.
-pub async fn build_app(pool: SqlitePool, secure_cookies: bool, auth: AuthServices) -> Router {
+pub async fn build_app(
+    pool: SqlitePool,
+    secure_cookies: bool,
+    auth: AuthServices,
+    suggestions: Option<LinkSuggestions>,
+) -> Router {
     let session_store = SqliteStore::new(pool.clone());
     session_store
         .migrate()
@@ -67,7 +75,11 @@ pub async fn build_app(pool: SqlitePool, secure_cookies: bool, auth: AuthService
         .with_http_only(true)
         .with_same_site(SameSite::Lax);
 
-    let state = AppState { db: pool, auth };
+    let state = AppState {
+        db: pool,
+        auth,
+        suggestions,
+    };
 
     Router::new()
         .route("/health", get(health))

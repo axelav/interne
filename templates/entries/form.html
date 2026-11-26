@@ -20,6 +20,13 @@
                 placeholder="example.com"
             >
             <div class="error-message">{% if let Some(err) = errors.get("url") %}{{ err }}{% endif %}</div>
+            {% if entry.is_none() %}
+            <div class="suggest-details">
+                <button type="button" class="link-button" id="suggest-details" aria-describedby="suggest-disclosure">Suggest details</button>
+                <p id="suggest-disclosure">Interne reads the public page for its title. To suggest a note or tags, it may send a short excerpt to OpenAI. It sends names from your own tags only when suggesting tags. Fields you edit or clear stay yours. Nothing is saved until you choose Save.</p>
+                <p id="suggest-status" role="status"></p>
+            </div>
+            {% endif %}
         </div>
 
         <div class="form-group">
@@ -77,7 +84,7 @@
                     id="tags"
                     name="tags"
                     value="{{ tags_string }}"
-                    placeholder="comma, separated, tags"
+                    aria-describedby="tags-hint"
                     role="combobox"
                     aria-autocomplete="list"
                     aria-controls="tag-suggestions"
@@ -85,6 +92,7 @@
                 >
                 <div id="tag-suggestions" role="listbox" aria-label="Tag suggestions" hidden></div>
             </div>
+            <small id="tags-hint">Separate tags with commas.</small>
         </div>
 
         <div class="form-group">
@@ -200,6 +208,98 @@
     }
     ta.addEventListener('input', update);
     update();
+
+    const suggest = document.getElementById('suggest-details');
+    if (!suggest) return;
+
+    const url = form.elements.url;
+    const status = document.getElementById('suggest-status');
+    const fields = [form.elements.title, ta, form.elements.tags];
+    const edited = new Set(fields.filter(field => field.value !== ''));
+    const suggested = new Set();
+    let request;
+
+    for (const field of fields) {
+        field.addEventListener('input', () => {
+            edited.add(field);
+            suggested.delete(field);
+        });
+    }
+
+    function setStatus(message, isError = false) {
+        status.classList.toggle('error-message', isError);
+        status.textContent = isError ? 'Error: ' + message : message;
+    }
+
+    function cancelSuggestion() {
+        request?.abort();
+        setStatus('');
+    }
+
+    url.addEventListener('input', () => {
+        cancelSuggestion();
+        for (const field of suggested) {
+            field.value = '';
+            showError(field.name, '');
+        }
+        suggested.clear();
+        update();
+    });
+    form.addEventListener('submit', event => {
+        if (!event.defaultPrevented) cancelSuggestion();
+    });
+    window.addEventListener('pagehide', cancelSuggestion);
+
+    suggest.addEventListener('click', async () => {
+        if (!validateField('url')) return;
+        cancelSuggestion();
+        const eligible = Object.fromEntries(fields.map(field => [field.name, !edited.has(field)]));
+        if (!Object.values(eligible).some(Boolean)) {
+            setStatus('No fields changed.');
+            return;
+        }
+        request = new AbortController();
+        const { signal } = request;
+        const target = url.value;
+        setStatus('Looking for details…');
+        try {
+            const reply = await fetch('/entries/suggest', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ url: target, fields: eligible }),
+                redirect: 'error',
+                signal
+            });
+            if (!reply.ok) {
+                const message = await reply.text();
+                if (!signal.aborted && url.value === target) {
+                    setStatus(reply.status === 422 || reply.status === 503
+                        ? message : 'Could not suggest details.', true);
+                }
+                return;
+            }
+            const details = await reply.json();
+            if (signal.aborted || url.value !== target) return;
+            const tags = details.tags.join(', ');
+            let applied = false;
+            for (const field of fields) {
+                if (!eligible[field.name] || edited.has(field) || details.unavailable?.includes(field.name)) continue;
+                const value = field.name === 'tags' ? tags : details[field.name] ?? '';
+                if (!value && !suggested.has(field)) continue;
+                field.value = value;
+                if (value) suggested.add(field);
+                else suggested.delete(field);
+                showError(field.name, '');
+                applied = true;
+            }
+            update();
+            setStatus(details.warning || (applied ? 'Suggestions updated. Review before saving.'
+                : (details.title || details.description || tags ? 'No fields changed.' : 'No details found on that page.')),
+                !applied && Boolean(details.unavailable?.length));
+        } catch {
+            if (!signal.aborted && url.value === target) setStatus('Could not suggest details.', true);
+        }
+    });
 })();
 </script>
 <script src="/static/tag-autocomplete.js?v={{ static_hash }}" defer></script>

@@ -430,6 +430,127 @@ async fn home_shows_only_available_entries() {
     assert!(html.contains("Not Yet Due"));
 }
 
+async fn shared_collection(app: &TestApp) -> (String, String, String) {
+    let (_, owner_login) = app.create_user("Owner").await;
+    let (_, member_login) = app.create_user("Member").await;
+    let owner = app.login(&owner_login).await;
+    let member = app.login(&member_login).await;
+    let response = app
+        .post_form("/collections", "name=Shared", Some(&owner))
+        .await;
+    assert_redirect(&response, "/collections");
+    let (id, invite): (String, String) = sqlx::query_as("SELECT id, invite_code FROM collections")
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+    let response = app
+        .post_form(
+            "/collections/join",
+            &format!("invite_code={invite}"),
+            Some(&member),
+        )
+        .await;
+    assert_redirect(&response, "/collections");
+    (id, owner, member)
+}
+
+fn collection_entry_form(title: &str, collection_id: &str, tag: &str) -> String {
+    format!(
+        "url=example.com&title={title}&duration=3&interval=days&collection_id={collection_id}&tags={tag}"
+    )
+}
+
+#[tokio::test]
+async fn owner_and_member_can_create_and_move_entries_between_shared_and_private() {
+    let app = TestApp::new().await;
+    let (collection, owner, member) = shared_collection(&app).await;
+
+    for (cookie, title) in [(&owner, "First"), (&member, "Second")] {
+        let saved_entry = || {
+            sqlx::query_as::<_, (String, Option<String>)>(
+                "SELECT id, collection_id FROM entries WHERE title = ?",
+            )
+            .bind(title)
+            .fetch_one(&app.db)
+        };
+        let shared = collection_entry_form(title, &collection, "");
+        let response = app.post_form("/entries", &shared, Some(cookie)).await;
+        assert_redirect(&response, "/");
+        let (id, destination) = saved_entry().await.unwrap();
+        assert_eq!(destination.as_ref(), Some(&collection));
+
+        let path = format!("/entries/{id}");
+        let private = collection_entry_form(title, "", "");
+        let response = app.post_form(&path, &private, Some(cookie)).await;
+        assert_redirect(&response, "/");
+        assert_eq!(saved_entry().await.unwrap().1, None);
+
+        let response = app.post_form(&path, &shared, Some(cookie)).await;
+        assert_redirect(&response, "/");
+        assert_eq!(saved_entry().await.unwrap().1.as_ref(), Some(&collection));
+    }
+}
+
+#[tokio::test]
+async fn stale_collection_forms_leave_entries_and_tags_unchanged_after_membership_ends() {
+    let app = TestApp::new().await;
+    let (collection, owner, member) = shared_collection(&app).await;
+    let private = "url=example.com&title=Original&duration=3&interval=days&tags=original";
+    let response = app.post_form("/entries", private, Some(&member)).await;
+    assert_redirect(&response, "/");
+    let (id, updated_at): (String, String) = sqlx::query_as("SELECT id, updated_at FROM entries")
+        .fetch_one(&app.db)
+        .await
+        .unwrap();
+    let path = format!("/entries/{id}");
+    for form in ["/entries/new".to_owned(), format!("{path}/edit")] {
+        let response = app.get(&form, Some(&member)).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(body_string(response).await.contains(&collection));
+    }
+    let draft = collection_entry_form("Revised", &collection, "revised");
+    let submit_drafts = || async {
+        for action in ["/entries", &path] {
+            let response = app.post_form(action, &draft, Some(&member)).await;
+            assert_eq!(response.status(), StatusCode::NOT_FOUND);
+            assert_eq!(body_string(response).await, "Not found");
+        }
+
+        let entries: Vec<(String, String, Option<String>, String)> =
+            sqlx::query_as("SELECT id, title, collection_id, updated_at FROM entries")
+                .fetch_all(&app.db)
+                .await
+                .unwrap();
+        assert_eq!(
+            entries,
+            [(id.clone(), "Original".to_owned(), None, updated_at.clone())]
+        );
+        let tags: Vec<(String, Option<String>)> = sqlx::query_as(
+            "SELECT t.name, et.entry_id FROM tags t LEFT JOIN entry_tags et ON et.tag_id = t.id",
+        )
+        .fetch_all(&app.db)
+        .await
+        .unwrap();
+        assert_eq!(tags, [("original".to_owned(), Some(id.clone()))]);
+    };
+
+    let response = app
+        .post_form(
+            &format!("/collections/{collection}/leave"),
+            "",
+            Some(&member),
+        )
+        .await;
+    assert_redirect(&response, "/collections");
+    submit_drafts().await;
+
+    let response = app
+        .delete(&format!("/collections/{collection}"), Some(&owner))
+        .await;
+    assert_hx_redirect(&response, "/collections");
+    submit_drafts().await;
+}
+
 #[tokio::test]
 async fn collection_member_sees_shared_entries() {
     let app = TestApp::new().await;

@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::{
-    Form, Router,
-    extract::{Path, State},
+    Form, Json, Router,
+    extract::{DefaultBodyLimit, Path, State},
     response::{Html, IntoResponse, Redirect},
     routing::{delete, get, post},
 };
@@ -12,7 +12,7 @@ use std::collections::HashMap;
 
 use crate::AppState;
 use crate::auth::AuthUser;
-use crate::error::AppError;
+use crate::error::{AppError, PageReadError};
 use crate::models::{Collection, Entry, Interval, User, Visit};
 
 #[derive(Template)]
@@ -101,34 +101,25 @@ pub struct EntryForm {
     collection_id: Option<String>,
 }
 
-/// Normalizes a URL string: prepends `https://` if no scheme, then parses with
-/// the `url` crate. Returns `Ok(normalized_url_string)` or `Err(error_message)`.
-fn normalize_url(raw: &str) -> Result<String, String> {
+/// Parses a link target, assuming HTTPS if the reader omitted the scheme.
+fn parse_link_url(raw: &str) -> Result<url::Url, &'static str> {
+    let invalid = "Please enter a valid URL (e.g. example.com)";
     let raw = raw.trim();
-    if raw.is_empty() {
-        return Ok(String::new());
-    }
-
-    // If no scheme, prepend https://
-    let with_scheme = if raw.starts_with("http://") || raw.starts_with("https://") {
-        raw.to_string()
+    let parsed = if raw.starts_with("http://") || raw.starts_with("https://") {
+        url::Url::parse(raw)
     } else if raw.contains("://") {
-        // Has a scheme but it's not http/https (e.g. ftp://)
-        return Err("Please enter a valid URL (e.g. example.com)".to_string());
+        return Err(invalid);
     } else {
-        format!("https://{}", raw)
+        url::Url::parse(&format!("https://{raw}"))
     };
+    parsed
+        .ok()
+        .filter(|url| url.host_str().is_some_and(|host| host.contains('.')))
+        .ok_or(invalid)
+}
 
-    match url::Url::parse(&with_scheme) {
-        Ok(parsed) => {
-            // Reject if the host is empty or not a valid domain
-            match parsed.host_str() {
-                Some(host) if host.contains('.') => Ok(parsed.to_string()),
-                _ => Err("Please enter a valid URL (e.g. example.com)".to_string()),
-            }
-        }
-        Err(_) => Err("Please enter a valid URL (e.g. example.com)".to_string()),
-    }
+fn normalize_url(raw: &str) -> Result<String, &'static str> {
+    parse_link_url(raw).map(String::from)
 }
 
 fn validate_entry_form(form: &EntryForm) -> HashMap<String, String> {
@@ -143,8 +134,8 @@ fn validate_entry_form(form: &EntryForm) -> HashMap<String, String> {
 
     if form.url.trim().is_empty() {
         errors.insert("url".to_string(), "URL is required".to_string());
-    } else if let Err(msg) = normalize_url(&form.url) {
-        errors.insert("url".to_string(), msg);
+    } else if let Err(msg) = parse_link_url(&form.url) {
+        errors.insert("url".to_string(), msg.to_string());
     }
 
     if form.title.trim().is_empty() {
@@ -177,6 +168,10 @@ pub fn router() -> Router<AppState> {
         .route("/waiting", get(list_waiting_entries))
         .route("/unseen", get(list_unseen_entries))
         .route("/entries/new", get(new_entry_form))
+        .route(
+            "/entries/suggest",
+            post(suggest_entry).layer(DefaultBodyLimit::max(8192)),
+        )
         .route("/entries", post(create_entry))
         .route("/entries/{id}/edit", get(edit_entry_form))
         .route("/entries/{id}", post(update_entry))
@@ -447,6 +442,27 @@ async fn visit_entry(
     Ok(Html(template.render()?))
 }
 
+#[derive(Deserialize)]
+struct SuggestEntry {
+    url: String,
+    fields: crate::suggestions::RequestedFields,
+}
+
+async fn suggest_entry(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Json(form): Json<SuggestEntry>,
+) -> Result<Json<crate::suggestions::Details>, AppError> {
+    let suggestions = state.suggestions.ok_or(AppError::SuggestionsUnavailable)?;
+    let url = parse_link_url(&form.url)
+        .map_err(|_| AppError::UnreadablePage(PageReadError::InvalidUrl))?;
+    suggestions
+        .suggest(url, form.fields, &state.db, &user.id)
+        .await
+        .map(Json)
+        .map_err(AppError::UnreadablePage)
+}
+
 async fn new_entry_form(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -473,6 +489,27 @@ async fn new_entry_form(
         user: Some(user),
     };
     Ok(Html(template.render()?))
+}
+
+// Both writes select from this single-row relation. An unavailable destination
+// produces no row, so the same statement checks access and changes the entry.
+macro_rules! with_writable_destination {
+    ($statement:literal) => {
+        concat!(
+            r#"
+            WITH writable_destination AS (
+                SELECT d.* FROM (SELECT ? AS user_id, ? AS collection_id) AS d
+                WHERE d.collection_id IS NULL OR EXISTS (
+                    SELECT 1 FROM collections WHERE id = d.collection_id AND owner_id = d.user_id
+                ) OR EXISTS (
+                    SELECT 1 FROM collection_members
+                    WHERE collection_id = d.collection_id AND user_id = d.user_id
+                )
+            )
+            "#,
+            $statement
+        )
+    };
 }
 
 async fn create_entry(
@@ -511,15 +548,15 @@ async fn create_entry(
 
     let collection_id = form.collection_id.filter(|s| !s.is_empty());
 
-    sqlx::query(
+    let result = sqlx::query(with_writable_destination!(
         r#"
         INSERT INTO entries (id, user_id, collection_id, url, title, description, duration, interval, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        SELECT ?, user_id, collection_id, ?, ?, ?, ?, ?, ?, ? FROM writable_destination
         "#
-    )
-    .bind(&id)
+    ))
     .bind(&user.id)
     .bind(&collection_id)
+    .bind(&id)
     .bind(normalize_url(&form.url).unwrap())
     .bind(&form.title)
     .bind(&form.description)
@@ -529,6 +566,9 @@ async fn create_entry(
     .bind(&now)
     .execute(&state.db)
     .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
 
     // Handle tags
     if let Some(tags) = form.tags {
@@ -629,19 +669,15 @@ async fn update_entry(
     Path(id): Path<String>,
     Form(form): Form<EntryForm>,
 ) -> Result<impl IntoResponse, AppError> {
-    // Verify user owns this entry
-    let entry: Option<Entry> = sqlx::query_as("SELECT * FROM entries WHERE id = ? AND user_id = ?")
-        .bind(&id)
-        .bind(&user.id)
-        .fetch_optional(&state.db)
-        .await?;
-
-    let Some(entry) = entry else {
-        return Ok(Redirect::to("/").into_response());
-    };
-
     let errors = validate_entry_form(&form);
     if !errors.is_empty() {
+        let entry: Entry = sqlx::query_as("SELECT * FROM entries WHERE id = ? AND user_id = ?")
+            .bind(&id)
+            .bind(&user.id)
+            .fetch_optional(&state.db)
+            .await?
+            .ok_or(AppError::NotFound)?;
+
         let collections: Vec<Collection> = sqlx::query_as(
             r#"
             SELECT c.* FROM collections c
@@ -669,23 +705,29 @@ async fn update_entry(
     let now = chrono::Utc::now().to_rfc3339();
     let collection_id = form.collection_id.filter(|s| !s.is_empty());
 
-    sqlx::query(
+    let result = sqlx::query(with_writable_destination!(
         r#"
         UPDATE entries
-        SET url = ?, title = ?, description = ?, duration = ?, interval = ?, collection_id = ?, updated_at = ?
-        WHERE id = ?
+        SET url = ?, title = ?, description = ?, duration = ?, interval = ?,
+            collection_id = writable_destination.collection_id, updated_at = ?
+        FROM writable_destination
+        WHERE entries.id = ? AND entries.user_id = writable_destination.user_id
         "#
-    )
+    ))
+    .bind(&user.id)
+    .bind(&collection_id)
     .bind(normalize_url(&form.url).unwrap())
     .bind(&form.title)
     .bind(&form.description)
     .bind(form.duration)
     .bind(form.interval)
-    .bind(&collection_id)
     .bind(&now)
     .bind(&id)
     .execute(&state.db)
     .await?;
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
 
     // Clear existing tags and re-add
     sqlx::query("DELETE FROM entry_tags WHERE entry_id = ?")

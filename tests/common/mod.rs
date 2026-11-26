@@ -153,7 +153,7 @@ impl TestApp {
             config: AuthConfig::new("https://interne.test", signup_mode).unwrap(),
             github: Arc::new(github.clone()),
         };
-        let router = interne::build_app(pool.clone(), false, auth).await;
+        let router = interne::build_app(pool.clone(), false, auth, None).await;
 
         Self {
             router,
